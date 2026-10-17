@@ -61,7 +61,8 @@ struct squid_body {
     rv_pdklib::rv_vec4 rot = SQUID_IDENTITY_QUAT;
     // Random acceleration per axis in units/s^2, advanced by the physics step; zero at birth.
     squid_flat drift{};
-    // Spin in rad/s in the tilt root's frame (x, z on the disc plane, y up); the physics step turns rot by it and decays it.
+    // Spin in rad/s in the dome frame (pose_yaw space: x, z on the disc plane, y up); the physics step turns rot by it
+    // and decays it.
     rv_pdklib::rv_vec3 spin{};
     // Hover phase in rad and its period in s; the physics step advances the phase, the view reads it.
     float hover_phase = 0;

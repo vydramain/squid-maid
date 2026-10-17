@@ -1,7 +1,7 @@
 #pragma once
 
-// The scene of the squid game in the ECS: the tilt root at the dome centre with the structure as its children, and
-// the ball body template that bodies are loaded from under the root. The disc writes the tilt each frame; the ECS
+// The scene of the squid game in the ECS: the tilt root at the dome centre, the pose group the structure and the balls
+// hang under, and the ball body template that bodies are loaded from. The disc writes the tilt each frame; the ECS
 // transform turns it into world matrices.
 
 #include <array>
@@ -32,12 +32,15 @@ inline constexpr const char *SQUID_SCENE_TAG = "scene";
 inline constexpr const char *SQUID_SCENE_FILE = "main.scene.toml";
 inline constexpr const char *SQUID_SCENE_BODY_FILE = "body.scene.toml";
 inline constexpr const char *SQUID_SCENE_TILT_NAME = "tilt";
+// The pose group the balls load under: it carries the structure's rotation but not its scale.
+inline constexpr const char *SQUID_SCENE_POSE_YAW_NAME = "pose_yaw";
 // The frame system that sets the camera of the scene's models; it is registered under this name.
 inline constexpr const char *SQUID_SCENE_CAMERA_SYSTEM = "squid-camera";
 
-// Entity of the scene object the disc moves or reports.
+// Entities of the scene objects the disc moves or reports, and of the group the balls load under.
 struct squid_scene_objects {
     rv_pdklib::ecs_id tilt{};
+    rv_pdklib::ecs_id pose_yaw{};
 };
 
 // Entity of the object with the name, in load order. A missing object is an error; the name is in the log.
@@ -184,6 +187,11 @@ inline int squid_scene_load(rv_pdklib::ecs_world &world, rv_cd *cd, squid_scene_
         squid_scene_discard(world, load_number);
         return check_code;
     }
+    const int pose_code = squid_scene_find(world, SQUID_SCENE_POSE_YAW_NAME, objects.pose_yaw);
+    if (pose_code != RV_OK) {
+        squid_scene_discard(world, load_number);
+        return pose_code;
+    }
     return RV_OK;
 }
 
@@ -203,7 +211,7 @@ inline int squid_scene_body_model(rv_pdklib::ecs_world &world, rv_pdklib::ecs_id
     return RV_OK;
 }
 
-// Loads one ball body under the tilt root and sets its model. On success load_number is the load to unload later and
+// Loads one ball body under pose_yaw and sets its model. On success load_number is the load to unload later and
 // id is the body's entity; on error neither is written and no part of the body stays in the world.
 inline int squid_scene_body_spawn(rv_pdklib::ecs_world &world,
     rv_cd *cd,
@@ -213,7 +221,7 @@ inline int squid_scene_body_spawn(rv_pdklib::ecs_world &world,
     rv_pdklib::ecs_id &id)
 {
     uint32_t number = 0;
-    const int load_code = rv_pdklib::ecs_scene_load(world, cd, SQUID_SCENE_BODY_FILE, objects.tilt, number);
+    const int load_code = rv_pdklib::ecs_scene_load(world, cd, SQUID_SCENE_BODY_FILE, objects.pose_yaw, number);
     if (load_code != RV_OK) {
         RV_LOG_ERR(SQUID_SCENE_TAG, "{} not loaded: rv_err {}", SQUID_SCENE_BODY_FILE, load_code);
         return load_code;
@@ -236,7 +244,7 @@ inline int squid_scene_body_spawn(rv_pdklib::ecs_world &world,
     return RV_OK;
 }
 
-// Places a body under the tilt root: model name, position in the tilt root's space (Q20.12) and Euler rotation.
+// Places a body under pose_yaw: model name, position in pose_yaw's space (Q20.12) and Euler rotation.
 inline int squid_scene_body_set(rv_pdklib::ecs_world &world,
     rv_pdklib::ecs_id id,
     const char *model,
@@ -284,7 +292,7 @@ inline int squid_scene_body_hidden(rv_pdklib::ecs_world &world, rv_pdklib::ecs_i
     return RV_OK;
 }
 
-// Writes the shown tilt to the tilt root; the ECS transform turns it into the structure's world matrices.
+// Writes the shown tilt to the tilt root; the ECS transform turns it into the world matrices of the dome and structure.
 inline int squid_scene_pose(rv_pdklib::ecs_world &world, const squid_scene_objects &objects, rv_pdklib::fx_vec3 rotation)
 {
     rv_pdklib::ecs_component_transform *tilt =

@@ -1,4 +1,4 @@
-# The template of one ball body, loaded once per body under the tilt root (src/squid-scene.hpp, squid_scene_body_spawn).
+# The template of one ball body, loaded once per body under pose_yaw (src/squid-scene.hpp, squid_scene_body_spawn).
 # The model is set after the load; the name is a placeholder. Values are Q20.12 (4096 = 1.0).
 # Scale 0.75: each model fits inside a sphere of its size's old radius, 4/3 of the physical radius in src/squid-params.hpp,
 # so the template shrinks it to its body; a new model is made to fit inside 4/3 of its body radius.

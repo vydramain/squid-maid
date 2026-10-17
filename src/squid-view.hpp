@@ -1,6 +1,6 @@
 #pragma once
 
-// Display of the squid game's bodies: one scene entity per body slot under the tilt root, placed at the body's disc
+// Display of the squid game's bodies: one scene entity per body slot under pose_yaw, placed at the body's disc
 // position on the dome, lifted by its hover, and turned by the display rotation the physics step keeps. Display only:
 // the view reads the body and never writes it.
 
@@ -107,7 +107,7 @@ inline void squid_view_pool_unload(rv_pdklib::ecs_world &world, squid_view_pool 
     pool.spawned = 0;
 }
 
-// Loads one body entity per slot under the tilt root. A refused load unloads the slots already made, so no body is
+// Loads one body entity per slot under pose_yaw. A refused load unloads the slots already made, so no body is
 // shown, and returns the refusal.
 inline int squid_view_spawn(rv_pdklib::ecs_world &world, rv_cd *cd, const squid_scene_objects &objects, squid_view_pool &pool)
 {
