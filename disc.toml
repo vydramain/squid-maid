@@ -18,3 +18,13 @@ format = "idx8"
 
 [models]
 files = ["assets/models/*.gltf"]
+
+[budget.pccg]
+# Recognizable old-tech models at 160/80/40/20 triangles; the worst frame is about 2190 (balls 1600 + structure 430 +
+# Alkoldun 160), so 4096 leaves headroom over the 2048 default.
+triangle_capacity = 4096
+
+[budget.pccv]
+# Twice triangle_capacity: rv_cg_model_put splits a triangle cut by the near plane into two primitives,
+# as the defaults do; nothing checks the 2:1 ratio, so it is kept by hand.
+frame_capacity = 8192
