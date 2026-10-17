@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <numbers>
+#include <random>
 
 #include "squid-body.hpp"
 #include "squid-input.hpp"
@@ -69,13 +70,34 @@ inline float squid_radius_checked(const squid_body &b)
     return radius;
 }
 
-// Acceleration, damping and speed cap, then the move by h seconds. The cap bounds this move only: an impulse in
-// squid_pair_step may leave a body faster until its next move, where it is clamped; momentum is conserved within each
-// collision, not across the cap.
+// Standard normal sample by Box-Muller; each uniform is a draw over (max + 1), so it lies in (0, 1) and the log is finite.
+inline float squid_normal(std::minstd_rand &rng)
+{
+    const double scale = static_cast<double>(rng.max()) + 1.0;
+    const double u1 = static_cast<double>(rng()) / scale;
+    const double u2 = static_cast<double>(rng()) / scale;
+    return static_cast<float>(std::sqrt(-2.0 * std::log(u1)) * std::cos(2.0 * std::numbers::pi * u2));
+}
+
+// Exact Ornstein-Uhlenbeck step of the drift over h seconds: it relaxes to zero with time constant SQUID_DRIFT_TAU_S and
+// keeps the stationary deviation SQUID_DRIFT_SIGMA / sqrt(mass), so heavier bodies drift less. One normal sample per
+// axis, x then z; each sample takes two generator draws.
+inline void squid_drift_step(squid_body &b, float h, std::minstd_rand &rng)
+{
+    const float decay = std::exp(-h / SQUID_DRIFT_TAU_S);
+    const float sigma = SQUID_DRIFT_SIGMA / std::sqrt(static_cast<float>(b.mass));
+    const float kick = sigma * std::sqrt(1.0f - decay * decay);
+    b.drift.x = b.drift.x * decay + kick * squid_normal(rng);
+    b.drift.z = b.drift.z * decay + kick * squid_normal(rng);
+}
+
+// Acceleration (tilt plus the body's drift), damping and speed cap, then the move by h seconds. The cap bounds this move
+// only: an impulse in squid_pair_step may leave a body faster until its next move, where it is clamped; momentum is
+// conserved within each collision, not across the cap.
 inline void squid_body_move(squid_body &b, squid_flat accel, float h, float damping)
 {
-    b.vel.x = (b.vel.x + accel.x * h) * damping;
-    b.vel.z = (b.vel.z + accel.z * h) * damping;
+    b.vel.x = (b.vel.x + (accel.x + b.drift.x) * h) * damping;
+    b.vel.z = (b.vel.z + (accel.z + b.drift.z) * h) * damping;
     const float speed = std::sqrt(b.vel.x * b.vel.x + b.vel.z * b.vel.z);
     const float cap = speed > SQUID_SPEED_MAX ? SQUID_SPEED_MAX / speed : 1.0f;
     b.vel.x *= cap;
@@ -250,7 +272,8 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
 
 // One substep of h seconds for every body: move, pairs, then the edge last, so no body ends outside the disc.
 // Count and sizes are checked first; a refusal logs its reason and moves nothing. Splits and absorbs add to counts.
-inline int squid_substep(squid_bodies &set, squid_flat accel, float h, squid_event_counts &counts)
+// Each body's drift advances here, in index order, from the generator rng.
+inline int squid_substep(squid_bodies &set, squid_flat accel, float h, squid_event_counts &counts, std::minstd_rand &rng)
 {
     const bool count_bad = set.count < 0 || set.count > SQUID_BODY_CAPACITY;
     if (count_bad) {
@@ -266,6 +289,7 @@ inline int squid_substep(squid_bodies &set, squid_flat accel, float h, squid_eve
     }
     const float damping = std::exp(-SQUID_DAMPING_PER_S * h);
     for (int i = 0; i < set.count; ++i) {
+        squid_drift_step(set.items[i], h, rng);
         squid_body_move(set.items[i], accel, h, damping);
     }
     squid_pair_step(set, counts);
@@ -278,8 +302,8 @@ inline int squid_substep(squid_bodies &set, squid_flat accel, float h, squid_eve
 // One frame of dt seconds as SQUID_SUBSTEPS substeps; counts holds this frame's splits and absorbs. Refused with state
 // untouched on a non-positive or non-finite dt or a non-finite tilt. A count or size refusal comes from the first
 // substep, before any move. Later substeps cannot refuse: masses stay in 1..8 and their total is at most 84, which
-// bounds the count, so no refusal is reachable mid-frame.
-inline int squid_physics_frame(squid_bodies &set, squid_tilt tilt, float dt, squid_event_counts &counts)
+// bounds the count, so no refusal is reachable mid-frame. The drift draws come from rng, which the round owns.
+inline int squid_physics_frame(squid_bodies &set, squid_tilt tilt, float dt, squid_event_counts &counts, std::minstd_rand &rng)
 {
     counts = squid_event_counts{};
     const bool dt_bad = !std::isfinite(dt) || dt <= 0.0f;
@@ -295,7 +319,7 @@ inline int squid_physics_frame(squid_bodies &set, squid_tilt tilt, float dt, squ
     const squid_flat accel = squid_gravity(tilt);
     const float h = dt / SQUID_SUBSTEPS;
     for (int step = 0; step < SQUID_SUBSTEPS; ++step) {
-        const int rc = squid_substep(set, accel, h, counts);
+        const int rc = squid_substep(set, accel, h, counts, rng);
         if (rc != RV_OK) {
             return rc;
         }

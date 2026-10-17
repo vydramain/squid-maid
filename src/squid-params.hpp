@@ -63,6 +63,13 @@ constexpr float SQUID_GRAVITY = 6.0f;
 // Speed decays with a 5 s time constant (exp(-0.2 t)); after the pad is levelled the balls float on as in weightlessness.
 constexpr float SQUID_DAMPING_PER_S = 0.2f;
 
+// Random drift of every body, as in weightlessness: an Ornstein-Uhlenbeck acceleration per axis, in units/s^2, of
+// standard deviation SQUID_DRIFT_SIGMA for mass 1; a body of mass m gets SQUID_DRIFT_SIGMA / sqrt(m).
+constexpr float SQUID_DRIFT_SIGMA = 0.35f;
+
+// Memory time of the drift in seconds: a push fades over about 1.5 s, so the motion is smooth, not jerky.
+constexpr float SQUID_DRIFT_TAU_S = 1.5f;
+
 // Speed cap in units/s; 8 is below the ~8.05 run across the whole disc without damping at this gravity, so it caps
 // that run and bounds the tunnelling check.
 constexpr float SQUID_SPEED_MAX = 8.0f;

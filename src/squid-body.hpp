@@ -58,6 +58,8 @@ struct squid_body {
     squid_flat vel{};
     // Display rotation, identity at birth; physics never reads it.
     rv_pdklib::rv_vec4 rot = SQUID_IDENTITY_QUAT;
+    // Random acceleration per axis in units/s^2, advanced by the physics step; zero at birth.
+    squid_flat drift{};
 };
 
 // Outcome of a touching pair: which bodies split, and which one is absorbed. Every touching pair that is not an

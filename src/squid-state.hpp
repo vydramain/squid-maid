@@ -118,6 +118,8 @@ struct squid_game {
     // the physics (prepare, ready, pause, pad loss, a frame the physics refused); a step refused for its dt changes nothing.
     squid_bodies bodies{};
     squid_event_counts events{};
+    // Draws the body drift in play; reseeded with the layout seed on every build, so a round and its restart repeat.
+    std::minstd_rand drift_rng{ SQUID_LAYOUT_SEED };
 };
 
 // The start layout has one Alkoldun and balls of the largest mass; the body capacity must hold them.
@@ -203,6 +205,7 @@ inline int squid_game_init(squid_game &g)
     if (layout != RV_OK) {
         return layout;
     }
+    g.drift_rng.seed(SQUID_LAYOUT_SEED);
     g.phase = squid_phase::prepare;
     return RV_OK;
 }
@@ -233,6 +236,7 @@ inline int squid_game_restart(squid_game &g)
     if (layout != RV_OK) {
         return layout;
     }
+    g.drift_rng.seed(SQUID_LAYOUT_SEED);
     g.events = squid_event_counts{};
     squid_input_level(g.input);
     g.input.smoothed = squid_tilt{};
@@ -300,7 +304,7 @@ inline int squid_game_play(squid_game &g, const rv_istate &state, uint64_t abili
         return input_rc;
     }
     squid_event_counts counts{};
-    const int stepped = squid_physics_frame(g.bodies, next_input.smoothed, dt, counts);
+    const int stepped = squid_physics_frame(g.bodies, next_input.smoothed, dt, counts, g.drift_rng);
     if (stepped != RV_OK) {
         return stepped;
     }
