@@ -27,8 +27,6 @@ constexpr float SQUID_FRAME_S = 1.0f / 60.0f;
 // Below this centre distance two balls have no contact direction; the x axis separates them.
 constexpr float SQUID_PAIR_COINCIDENT_EPS = 1e-6f;
 
-constexpr float SQUID_DEG_TO_RAD = std::numbers::pi_v<float> / 180.0f;
-
 // Travel per substep must stay under a quarter of the smallest radius, so no ball skips past another.
 static_assert(SQUID_SPEED_MAX * (SQUID_FRAME_S / SQUID_SUBSTEPS) < SQUID_BALL_RADIUS[0] / 4.0f,
     "speed cap times the substep must stay under a quarter of the smallest ball radius");

@@ -33,6 +33,9 @@ constexpr float SQUID_SHAPE_GAIN = SQUID_TILT_LIMIT_DEG / (SQUID_FULL_INPUT_TILT
 // Radians to degrees; the tilt angles come from asin in radians and are shown in degrees.
 constexpr float SQUID_RAD_TO_DEG = 180.0f / std::numbers::pi_v<float>;
 
+// Degrees to radians, the inverse of SQUID_RAD_TO_DEG.
+constexpr float SQUID_DEG_TO_RAD = std::numbers::pi_v<float> / 180.0f;
+
 struct squid_tilt {
     float x_deg = 0;
     float z_deg = 0;

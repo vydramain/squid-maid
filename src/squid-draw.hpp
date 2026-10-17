@@ -28,9 +28,6 @@ namespace squid
 // Log tag of drawing messages.
 constexpr const char *SQUID_DRAW_TAG = "draw";
 
-// Degrees to radians, the inverse of SQUID_RAD_TO_DEG.
-constexpr float SQUID_DEG_TO_RAD = std::numbers::pi_v<float> / 180.0f;
-
 // Colours: the background (dark, so the lines read), the orbit's near and far halves, the trail's newest segment (older
 // ones scale down), the active target's ring, the centre cross and the text ink.
 constexpr rv_color SQUID_DRAW_BACKGROUND = { 12, 14, 22 };
