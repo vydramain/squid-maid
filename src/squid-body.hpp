@@ -34,8 +34,9 @@ static_assert(std::size(SQUID_BALL_RADIUS) == static_cast<std::size_t>(std::rang
 // Size of Alkoldun: its radius and thresholds follow size 3; it never splits, and nothing absorbs into it.
 constexpr int SQUID_ALKOLDUN_SIZE = 3;
 
-// Model variants chosen at birth, 0..3; display only.
-constexpr int SQUID_MODEL_VARIANTS = 4;
+// Model variants chosen at birth, 0..4 (the largest size's count); display only. A smaller size takes the variant
+// modulo its own count (squid-view.hpp).
+constexpr int SQUID_MODEL_VARIANTS = 5;
 
 // Display rotation at birth: the identity quaternion (x, y, z, w).
 inline constexpr rv_pdklib::rv_vec4 SQUID_IDENTITY_QUAT{ 0, 0, 0, 1 };

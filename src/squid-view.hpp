@@ -4,6 +4,7 @@
 // position on the dome, lifted by its hover, and turned by the display rotation the physics step keeps. Display only:
 // the view reads the body and never writes it.
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 
@@ -23,15 +24,35 @@ namespace squid
 inline constexpr const char *SQUID_VIEW_TAG = "view";
 
 // Baked model resource names of the balls by size (row, size 1 first) and variant (column): the console resolves a
-// model by this name, and the burner bakes each file in assets/models to it.
+// model by this name, and the burner bakes each file in assets/models to it. Columns past a size's count are unused.
 inline constexpr const char *SQUID_VIEW_MODELS[][SQUID_MODEL_VARIANTS] = {
-    { "m1_floppy.mppcmod", "m1_punchcard.mppcmod", "m1_battery.mppcmod", "m1_bulb.mppcmod" },
-    { "m2_cassette.mppcmod", "m2_calculator.mppcmod", "m2_tube.mppcmod", "m2_iron.mppcmod" },
-    { "m3_crt.mppcmod", "m3_phone.mppcmod", "m3_reel.mppcmod", "m3_vacuum.mppcmod" },
-    { "m4_satellite.mppcmod", "m4_sedan.mppcmod", "m4_washer.mppcmod", "m4_microwave.mppcmod" },
+    { "m1_floppy.mppcmod", "m1_punchcard.mppcmod", "m1_battery.mppcmod", "m1_bulb.mppcmod", nullptr },
+    { "m2_cassette.mppcmod", "m2_calculator.mppcmod", "m2_tube.mppcmod", "m2_iron.mppcmod", nullptr },
+    { "m3_crt.mppcmod", "m3_phone.mppcmod", "m3_reel.mppcmod", "m3_vacuum.mppcmod", nullptr },
+    { "m4_satellite.mppcmod", "m4_sedan.mppcmod", "m4_washer.mppcmod", "m4_microwave.mppcmod", "m4_fridge.mppcmod" },
 };
 // One row per ball size: the table must cover every size the radius table has.
 static_assert(std::size(SQUID_VIEW_MODELS) == std::size(SQUID_BALL_RADIUS));
+
+// Models per size (size 1 first). A body's variant is taken modulo its size's count, so a split half that inherits a
+// variant past a smaller size's count still gets a model.
+inline constexpr int SQUID_VIEW_SIZE_VARIANTS[] = { 4, 4, 4, 5 };
+static_assert(std::size(SQUID_VIEW_SIZE_VARIANTS) == std::size(SQUID_BALL_RADIUS));
+static_assert(std::ranges::max(SQUID_VIEW_SIZE_VARIANTS) == SQUID_MODEL_VARIANTS);
+
+// Every size's first SQUID_VIEW_SIZE_VARIANTS names are set; a nullptr there would reach the console as a model.
+constexpr bool squid_view_table_complete()
+{
+    for (std::size_t size = 0; size < std::size(SQUID_VIEW_MODELS); ++size) {
+        for (int variant = 0; variant < SQUID_VIEW_SIZE_VARIANTS[size]; ++variant) {
+            if (SQUID_VIEW_MODELS[size][variant] == nullptr) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+static_assert(squid_view_table_complete(), "every size's model names must be set up to its variant count");
 
 // Model file of Alkoldun; also the placeholder every pool entity is loaded with before its first frame.
 inline constexpr const char *SQUID_VIEW_ALKOLDUN_MODEL = "alkoldun.mppcmod";
@@ -55,7 +76,7 @@ inline int squid_view_model(const squid_body &body, const char *&model)
         RV_LOG_ERR(SQUID_VIEW_TAG, "body model refused: variant {} is outside 0..{}", body.variant, SQUID_MODEL_VARIANTS - 1);
         return RV_ERR_INVAL;
     }
-    model = SQUID_VIEW_MODELS[size - 1][body.variant];
+    model = SQUID_VIEW_MODELS[size - 1][body.variant % SQUID_VIEW_SIZE_VARIANTS[size - 1]];
     return RV_OK;
 }
 
