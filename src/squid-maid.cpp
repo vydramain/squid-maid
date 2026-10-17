@@ -45,16 +45,17 @@ struct squid_button_row {
     squid_command command;
 };
 
-// Port 0 front buttons by phase. SOUTH is the one "next" button: calibrate while preparing, start when ready.
+// Port 0 buttons by phase, named by the pad's labels: A (SOUTH) is the one "next" button, calibrate while preparing and
+// start when ready; Y (NORTH) recalibrates; View (MENU_BTTN_VIEW) pauses and resumes; B (EAST) restarts.
 constexpr auto SQUID_BUTTON_ROWS = std::to_array<squid_button_row>({
     { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::prepare, squid_command::calibrate },
     { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::ready, squid_command::start },
     { RV_ISOURCE_FRONT_BTTN_NORTH, squid_phase::ready, squid_command::calibrate },
     { RV_ISOURCE_FRONT_BTTN_NORTH, squid_phase::pause, squid_command::calibrate },
-    { RV_ISOURCE_BUMPER_RIGHT, squid_phase::play, squid_command::pause },
-    { RV_ISOURCE_BUMPER_RIGHT, squid_phase::pause, squid_command::pause },
-    { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::ready, squid_command::restart },
-    { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::pause, squid_command::restart },
+    { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::play, squid_command::pause },
+    { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::pause, squid_command::pause },
+    { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::ready, squid_command::restart },
+    { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::pause, squid_command::restart },
 });
 
 // The first row the pressed buttons give in this phase. One row per frame: a command must not chain into the next
@@ -172,9 +173,9 @@ public:
         // The start log compares the phase with its value before this frame's press and step.
         const squid_phase phase_before = game_.phase;
         squid_frame_flags happened{};
-        // The debug panel's switch: each press of the left bumper flips it; it starts off.
-        const bool bumper = (pressed & RV_ISOURCE_BUMPER_LEFT) != 0;
-        debug_panel_ = debug_panel_ != bumper;
+        // The debug panel's switch: each press of the upper left rear button (L4) flips it; it starts off.
+        const bool rear = (pressed & RV_ISOURCE_REAR_BTTN_LEFT_UPPER) != 0;
+        debug_panel_ = debug_panel_ != rear;
         note(press(pressed, state, abilities, happened));
         const squid_phase phase_before_step = game_.phase;
         const int step_code = squid_game_step(game_, state, abilities, dt);
@@ -247,7 +248,7 @@ private:
         }
     }
 
-    // The command of the frame's press, with its calibration flag in happened. WEST is not a machine command: it levels
+    // The command of the frame's press, with its calibration flag in happened. X (WEST) is not a machine command: it levels
     // the reserve's keys, an input action with no state edge in the machine, so it stays outside the table.
     int press(uint64_t pressed, const rv_istate &state, uint64_t abilities, squid_frame_flags &happened)
     {
@@ -419,7 +420,7 @@ private:
     rv_pdklib::fx_vec3 rotation_{};
     // The input's target tilt; the debug panel shows it beside the smoothed game tilt, not the 1/3 picture.
     squid_tilt target_tilt_{};
-    // Left bumper toggles the debug panel; off at start.
+    // Upper left rear button (L4) toggles the debug panel; off at start.
     bool debug_panel_ = false;
     rv_pdklib::ecs_world world_;
     squid_scene_objects scene_;

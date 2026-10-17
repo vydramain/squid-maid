@@ -22,14 +22,11 @@ constexpr std::string_view SQUID_TEXT_LEAD_PREPARE =
     "Выпей 3 меченые бутылки - их выбивает только удар по самому тяжёлому холодильнику.";
 constexpr std::string_view SQUID_TEXT_LEAD_PLAY = "Цель: 3 меченые бутылки - бей Алколдуном самый тяжёлый холодильник.";
 
-// Hints. Buttons are the pad's names; the keys in brackets are the console window's (rv_pcwindow_sdl3.cpp).
-constexpr std::string_view SQUID_TEXT_HINT_PREPARE =
-    "SOUTH (Space/Z): калибровка  EAST (X): свободный режим  WEST (C): выровнять";
-constexpr std::string_view SQUID_TEXT_HINT_READY =
-    "SOUTH (Space/Z): старт  NORTH (V): перекалибровка  VIEW (Tab): рестарт  EAST (X): свободный режим  WEST (C): выровнять";
-constexpr std::string_view SQUID_TEXT_HINT_PLAY = "Правый бампер (E): пауза";
-constexpr std::string_view SQUID_TEXT_HINT_PAUSE =
-    "Правый бампер (E): продолжить  NORTH (V): перекалибровка  VIEW (Tab): рестарт";
+// Hints. Each button is its pad label in parentheses: (A) (B) (X) (Y) (View).
+constexpr std::string_view SQUID_TEXT_HINT_PREPARE = "(A) калибровка  (X) выровнять";
+constexpr std::string_view SQUID_TEXT_HINT_READY = "(A) старт  (Y) перекалибровка  (B) рестарт  (X) выровнять";
+constexpr std::string_view SQUID_TEXT_HINT_PLAY = "(View) пауза";
+constexpr std::string_view SQUID_TEXT_HINT_PAUSE = "(View) продолжить  (Y) перекалибровка  (B) рестарт";
 
 // Beer counter: the first {} is the bottles drunk, the second the goal.
 constexpr std::string_view SQUID_TEXT_BEER = "Пиво {} / {}";
