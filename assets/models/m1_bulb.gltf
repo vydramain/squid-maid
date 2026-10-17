@@ -24,9 +24,9 @@
 			"name":"m1_bulb",
 			"pbrMetallicRoughness":{
 				"baseColorFactor":[
-					0.9200000166893005,
-					0.9200000166893005,
-					0.8600000143051147,
+					0.779,
+					0.779,
+					0.758,
 					1
 				],
 				"metallicFactor":0,
@@ -38,9 +38,9 @@
 			"name":"m1_bulb.001",
 			"pbrMetallicRoughness":{
 				"baseColorFactor":[
-					0.18000000715255737,
-					0.18000000715255737,
-					0.18000000715255737,
+					0.153,
+					0.153,
+					0.153,
 					1
 				],
 				"metallicFactor":0,

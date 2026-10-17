@@ -24,9 +24,9 @@
 			"name":"m1_battery",
 			"pbrMetallicRoughness":{
 				"baseColorFactor":[
-					0.8199999928474426,
-					0.7799999713897705,
-					0.6600000262260437,
+					0.676,
+					0.662,
+					0.621,
 					1
 				],
 				"metallicFactor":0,
@@ -38,9 +38,9 @@
 			"name":"m1_battery.001",
 			"pbrMetallicRoughness":{
 				"baseColorFactor":[
-					0.18000000715255737,
-					0.18000000715255737,
-					0.18000000715255737,
+					0.153,
+					0.153,
+					0.153,
 					1
 				],
 				"metallicFactor":0,
