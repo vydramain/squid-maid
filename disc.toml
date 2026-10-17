@@ -7,27 +7,3 @@ sources = ["src/*.cpp"]
 
 [assets]
 files = ["scenes/*.scene.toml"]
-
-[budget.pcca]
-voice_count = 24
-sound_memory_size = 1048576
-
-[budget.pccv]
-screen_width = 320
-screen_height = 240
-texture_max_width = 256
-texture_max_height = 256
-video_memory_size = 1048576
-frame_capacity = 4096
-ot_bucket_count = 1024
-
-[budget.pccg]
-model_memory_size = 524288
-triangle_capacity = 4096
-
-[budget.pccio]
-iport_count = 2
-
-[budget.pccm]
-card_slots = 16
-card_slot_size = 8192
