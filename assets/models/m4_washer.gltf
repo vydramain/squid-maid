@@ -24,9 +24,9 @@
 			"name":"m4_washer",
 			"pbrMetallicRoughness":{
 				"baseColorFactor":[
-					0.8999999761581421,
-					0.8999999761581421,
-					0.8999999761581421,
+					0.765,
+					0.765,
+					0.765,
 					1
 				],
 				"metallicFactor":0,
@@ -38,9 +38,9 @@
 			"name":"m4_washer.001",
 			"pbrMetallicRoughness":{
 				"baseColorFactor":[
-					0.1599999964237213,
-					0.1599999964237213,
-					0.18000000715255737,
+					0.137,
+					0.137,
+					0.144,
 					1
 				],
 				"metallicFactor":0,
