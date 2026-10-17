@@ -1,7 +1,9 @@
 # The scene of the squid-maid prototype. The tilt root sits at the dome centre
 # (SQUID_DOME_CENTER in src/squid-params.hpp, -49 -3990 -242 in Q20.12) with scale 1 and no parent; the disc writes its
-# rotation each frame, so the structure tilts about the dome centre. The children are offset by minus that centre, so with
-# no tilt every object is where it was when the root sat at the origin.
+# rotation each frame, so the structure and the balls tilt with it. The structure hangs under two pose groups at the
+# tilt root's origin: pose_yaw turns it 30 deg about the plate normal, then pose_pitch tilts it 56.7 deg toward the
+# camera and scales it 1.25. Two groups, because one group would apply the yaw after the pitch. The children are offset
+# by minus the dome centre, so the pose turns and scales them about the dome centre.
 # Values are Q20.12 (4096 = 1.0).
 # The three elephants stand in a row (x = -1.1, 0, 1.1; z = 0) on the turtle, whose shell is scaled 2.5 x 0.3 x 1.4
 # (its top at y = -1.85). Each foot sits 0.00 to 0.03 into the shell, none hangs over it. The feet are at y = -1.9 and
@@ -22,9 +24,31 @@ mesh = ""
 texture = ""
 
 [[object]]
+id = "7a500003"
+name = "pose_pitch"
+parent = "7a500001"
+kind = "group"
+position = [0, 0, 0]
+rotation = [232243, 0, 0]
+scale = [5120, 5120, 5120]
+mesh = ""
+texture = ""
+
+[[object]]
+id = "7a500004"
+name = "pose_yaw"
+parent = "7a500003"
+kind = "group"
+position = [0, 0, 0]
+rotation = [0, -122880, 0]
+scale = [4096, 4096, 4096]
+mesh = ""
+texture = ""
+
+[[object]]
 id = "7a500002"
 name = "earth"
-parent = "7a500001"
+parent = "7a500004"
 kind = "mesh"
 position = [49, 3990, 242]
 rotation = [0, 0, 0]
@@ -41,7 +65,7 @@ name = "decal"
 [[object]]
 id = "7a500021"
 name = "elephant_0"
-parent = "7a500001"
+parent = "7a500004"
 kind = "mesh"
 position = [-4457, -3792, 242]
 rotation = [0, 0, 0]
@@ -52,7 +76,7 @@ texture = ""
 [[object]]
 id = "7a500022"
 name = "elephant_1"
-parent = "7a500001"
+parent = "7a500004"
 kind = "mesh"
 position = [49, -3792, 242]
 rotation = [0, 0, 0]
@@ -63,7 +87,7 @@ texture = ""
 [[object]]
 id = "7a500023"
 name = "elephant_2"
-parent = "7a500001"
+parent = "7a500004"
 kind = "mesh"
 position = [4555, -3792, 242]
 rotation = [0, 0, 0]
@@ -74,7 +98,7 @@ texture = ""
 [[object]]
 id = "7a500030"
 name = "turtle"
-parent = "7a500001"
+parent = "7a500004"
 kind = "mesh"
 position = [49, -4699, 242]
 rotation = [0, 0, 0]
