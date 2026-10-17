@@ -1,5 +1,7 @@
 #pragma once
 
+#include <numbers>
+
 // Starting values for tuning the squid game (docs/disdoc.md, section 13); not a checked balance.
 // World units are abstract; angles are in degrees.
 
@@ -41,6 +43,72 @@ constexpr int SQUID_TARGET_COUNT = 8;
 
 // Length of Alkoldun's trail in seconds of flight; shows the direction of motion.
 constexpr float SQUID_TRAIL_LENGTH_S = 0.4f;
+
+// Radius of the invisible dome; 3.04, measured from the scene meshes, is the plate corner's distance from the mass centre,
+// so the 0.46 gap keeps the whole structure under it.
+constexpr float SQUID_DOME_RADIUS = 3.5f;
+
+// Dome centre = mass centre of the Earth, the three elephants and the turtle (mesh volumes in the scene transforms).
+constexpr float SQUID_DOME_CENTER_X = -0.012f;
+constexpr float SQUID_DOME_CENTER_Y = -0.974f;
+constexpr float SQUID_DOME_CENTER_Z = -0.059f;
+
+// Disc edge as the angle from the dome top; at 90 deg (equator) edge balls are squeezed 36 percent along the circle,
+// at 60 deg 17 percent, and the edge ring sits above the plate.
+constexpr float SQUID_DISC_EDGE_DEG = 60.0f;
+
+// Flat disc radius (about 3.67): the dome arc length from the top to the edge.
+constexpr float SQUID_DISC_RADIUS = SQUID_DOME_RADIUS * SQUID_DISC_EDGE_DEG * std::numbers::pi_v<float> / 180.0f;
+
+// Ball radius by size, index size - 1 (size 1 smallest .. 4); grows as mass^(1/3) for masses 1, 2, 4, 8.
+// Size 4 is estimated ~36 px on 320x240.
+constexpr float SQUID_BALL_RADIUS[] = { 0.30f, 0.38f, 0.48f, 0.60f };
+
+// Balls of size 4 at the start; with Alkoldun the total mass is 84 smallest units: 28.5 percent of the disc area,
+// 56.3 percent after a full split.
+constexpr int SQUID_START_BALLS = 10;
+
+// Alkoldun's mass in smallest units: it weighs like size 3; it never splits.
+constexpr int SQUID_ALKOLDUN_MASS = 4;
+
+// Gravity along the tilted disc, in units/s^2; at 35 deg tilt a = 5.2 and centre to edge takes 1.2 s, so the tilt
+// is felt at once and does not throw the balls.
+constexpr float SQUID_GRAVITY = 9.0f;
+
+// Speed decays with a 2 s time constant (exp(-0.5 t)); a ball rolls about 2 s after the pad is levelled.
+constexpr float SQUID_DAMPING_PER_S = 0.5f;
+
+// Speed cap in units/s; 8 is below the ~8.7 run across the whole disc without damping, so it caps that run
+// and bounds the tunnelling check.
+constexpr float SQUID_SPEED_MAX = 8.0f;
+
+// Physics substeps per 60 Hz frame (1/240 s each): travel per substep 8/240 = 0.033 is under r1/4 = 0.075,
+// a quarter of the smallest radius, so a ball cannot skip past another.
+constexpr int SQUID_SUBSTEPS = 4;
+
+// Threshold T of the normal relative speed that splits a pair of equal sizes; uniform gravity moves all balls alike,
+// so the relative speed comes from the edge and collisions.
+constexpr float SQUID_SPLIT_SPEED = 3.0f;
+
+// A pair of different sizes needs this times the threshold (6 units/s): a head-on hit, or one ball back from the edge.
+constexpr float SQUID_SPLIT_UNEQUAL_FACTOR = 2.0f;
+
+// Ball-ball restitution: billiard-like elastic balls.
+constexpr float SQUID_BALL_RESTITUTION = 0.85f;
+
+// Edge restitution: the edge absorbs more, so balls do not race around forever.
+constexpr float SQUID_RIM_RESTITUTION = 0.6f;
+
+// Tangential speed in units/s that moves the two halves of a split apart, shared inversely to their masses,
+// so they do not merge again on a weak touch.
+constexpr float SQUID_SPLIT_SEPARATION_SPEED = 0.6f;
+
+// Camera elevation for the dome view; estimated: at the old 35 deg the far half of the disc is squeezed into a strip.
+constexpr float SQUID_DOME_CAMERA_ELEVATION_DEG = 55.0f;
+
+// Share of the game tilt that the world on screen tilts by (up to ~12 deg); estimated: at the full 35 deg the dome leaves
+// the frame, or the scale drops to ~23 px per unit.
+constexpr float SQUID_VISIBLE_TILT_SHARE = 1.0f / 3.0f;
 
 // Debug view camera: the eye sits this far above the orbit plane, looking at the Earth's centre.
 constexpr float SQUID_CAMERA_ELEVATION_DEG = 35.0f;
