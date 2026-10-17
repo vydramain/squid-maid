@@ -25,8 +25,9 @@ constexpr int SQUID_SEQUENCE_NONE = -1;
 // Two targets must not overlap: centres more than two debris radii apart.
 constexpr float SQUID_TARGET_OVERLAP_GAP = 2.0f * SQUID_DEBRIS_RADIUS;
 
-// Consecutive targets and the start: the touch distance (Alkoldun + debris) times 2. The factor is a margin: the ball
-// at a hit must fly a full touch distance away before the next target can touch it.
+// Consecutive targets and the start: the touch distance (Alkoldun + debris) times 2. The gap keeps the ball at a hit
+// point out of the next target. A move inside one frame is not covered: squid-state does not count the next target in
+// the frame of a hit and needs a new contact.
 constexpr float SQUID_TARGET_NEXT_GAP = 2.0f * (SQUID_ALKOLDUN_RADIUS + SQUID_DEBRIS_RADIUS);
 
 struct squid_target {
