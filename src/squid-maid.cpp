@@ -1,4 +1,8 @@
-// squid-maid entry point: the tilt input, the scene of the orbit and the debug view (docs/disdoc.md, 6, 15.1, 15.2).
+// squid-maid entry point: the game state machine driven by the front buttons, its sounds, the scene of the orbit and
+// the debug view (docs/disdoc.md, 6, 7, 9, 11, 15.1, 15.2).
+#include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 
 #include "pdk/cg/rv_cg.h"
@@ -17,6 +21,8 @@
 #include "squid-orbit.hpp"
 #include "squid-params.hpp"
 #include "squid-scene.hpp"
+#include "squid-sound.hpp"
+#include "squid-state.hpp"
 
 namespace squid
 {
@@ -29,6 +35,71 @@ constexpr const char *SQUID_MAID_TAG = "maid";
 
 // The state line is logged on frame 0 and then every this many frames.
 constexpr int64_t SQUID_LOG_PERIOD_FRAMES = 60;
+
+// A front button and the command it gives in one phase. A press with no row in the current phase does nothing.
+struct squid_button_row {
+    uint64_t button;
+    squid_phase phase;
+    squid_command command;
+};
+
+// Port 0 front buttons by phase. SOUTH is the one "next" button: calibrate while preparing, start when ready.
+constexpr auto SQUID_BUTTON_ROWS = std::to_array<squid_button_row>({
+    { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::prepare, squid_command::calibrate },
+    { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::ready, squid_command::start },
+    { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::prepare, squid_command::free_mode },
+    { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::ready, squid_command::free_mode },
+    { RV_ISOURCE_FRONT_BTTN_NORTH, squid_phase::ready, squid_command::calibrate },
+    { RV_ISOURCE_FRONT_BTTN_NORTH, squid_phase::pause, squid_command::calibrate },
+    { RV_ISOURCE_BUMPER_RIGHT, squid_phase::play, squid_command::pause },
+    { RV_ISOURCE_BUMPER_RIGHT, squid_phase::pause, squid_command::pause },
+    { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::ready, squid_command::restart },
+    { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::pause, squid_command::restart },
+    { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::result, squid_command::restart },
+});
+
+// The first row the pressed buttons give in this phase. One row per frame: a command must not chain into the next
+// phase's command within the same frame.
+const squid_button_row *button_row(uint64_t pressed, squid_phase phase)
+{
+    const auto it =
+        std::find_if(SQUID_BUTTON_ROWS.begin(), SQUID_BUTTON_ROWS.end(), [pressed, phase](const squid_button_row &row) {
+            return (pressed & row.button) != 0 && row.phase == phase;
+        });
+    return it == SQUID_BUTTON_ROWS.end() ? nullptr : &*it;
+}
+
+// Events of one frame that may carry a sound: a press's calibration, a new hit, the entry into play, the end.
+enum class squid_frame_event : int {
+    calibrate = 0,
+    hit = 1,
+    start = 2,
+    finish = 3,
+};
+// Count of the enum above; the flags are indexed by it.
+constexpr std::size_t SQUID_FRAME_EVENT_COUNT = 4;
+using squid_frame_flags = std::array<bool, SQUID_FRAME_EVENT_COUNT>;
+
+struct squid_sound_rule {
+    squid_frame_event event;
+    squid_sound_event sound;
+};
+
+// One sound per frame, the first rule whose event happened: the single voice would cut the others anyway.
+constexpr auto SQUID_SOUND_RULES = std::to_array<squid_sound_rule>({
+    { squid_frame_event::finish, squid_sound_event::finish },
+    { squid_frame_event::start, squid_sound_event::start },
+    { squid_frame_event::hit, squid_sound_event::hit },
+    { squid_frame_event::calibrate, squid_sound_event::calibrate },
+});
+
+const squid_sound_rule *sound_rule(const squid_frame_flags &happened)
+{
+    const auto it = std::find_if(SQUID_SOUND_RULES.begin(), SQUID_SOUND_RULES.end(), [&happened](const squid_sound_rule &rule) {
+        return happened[static_cast<std::size_t>(rule.event)];
+    });
+    return it == SQUID_SOUND_RULES.end() ? nullptr : &*it;
+}
 
 } // namespace
 
@@ -48,6 +119,13 @@ public:
             RV_LOG_ERR(SQUID_MAID_TAG, "no geometry controller: the orbit cannot be drawn");
             return RV_ERR_INVAL;
         }
+        // The machine logs the cause; without its targets there is no round to play.
+        const int game_code = squid_game_init(game_);
+        if (game_code != RV_OK) {
+            return game_code;
+        }
+        // The loader logs the cause; without sounds each event is refused and logged by its play.
+        note(squid_sound_init(pdk_, sound_));
         // The loader logs the cause; without the scene the disc draws the debug view only.
         const int scene_code = squid_scene_load(world_, rv_pdko_cd(pdk_), scene_);
         note(scene_code);
@@ -63,22 +141,21 @@ public:
         rv_cio *cio = rv_pdko_cio(pdk_);
         const rv_istate state = rv_cio_iport_state(cio, 0);
         const uint64_t abilities = rv_cio_iport_abilities(cio, 0);
-        // Edges, not levels: a held button calibrates or levels once.
+        // Edges, not levels: a held button gives its command once.
         const uint64_t pressed = state.buttons & ~pad_buttons_;
         pad_buttons_ = state.buttons;
         sensor_ = (abilities & RV_ISOURCE_GYRO_MOVE) != 0;
 
-        if (pressed & RV_ISOURCE_FRONT_BTTN_SOUTH) {
-            calibrate(state);
-        }
-        if (pressed & RV_ISOURCE_FRONT_BTTN_WEST) {
-            squid_input_level(input_);
-        }
-        note(squid_input_step(input_, state, abilities, dt));
-        note(squid_orbit_step(orbit_, dt));
-        note(squid_orbit_tilt(input_.smoothed.x_deg, input_.smoothed.z_deg, rotation_));
+        // Sounds compare the phase and hits with their values before this frame's press and step.
+        const squid_phase phase_before = game_.phase;
+        const int hits_before = game_.sequence.hits;
+        squid_frame_flags happened{};
+        note(press(pressed, state, abilities, happened));
+        note(squid_game_step(game_, state, abilities, dt));
+        note(sound_changes(phase_before, hits_before, happened));
+        note(squid_orbit_tilt(game_.input.smoothed.x_deg, game_.input.smoothed.z_deg, rotation_));
         if (scene_ready_) {
-            note(squid_scene_pose(world_, scene_, rotation_, orbit_));
+            note(squid_scene_pose(world_, scene_, rotation_, game_.orbit));
         }
 
         if (frame_index_ % SQUID_LOG_PERIOD_FRAMES == 0) {
@@ -125,35 +202,65 @@ private:
         }
     }
 
-    // Takes the pose as neutral. Only a pad with a sensor has a pose; on the reserve the press changes nothing.
-    void calibrate(const rv_istate &state)
+    // The command of the frame's press, with its calibration flag in happened. WEST is not a machine command: it levels
+    // the reserve's keys, an input action with no state edge in the machine, so it stays outside the table.
+    int press(uint64_t pressed, const rv_istate &state, uint64_t abilities, squid_frame_flags &happened)
     {
-        if (!sensor_) {
-            RV_LOG_INFO(SQUID_MAID_TAG, "calibrate not applied: the pad has no sensor");
-            return;
+        if (pressed & RV_ISOURCE_FRONT_BTTN_WEST) {
+            squid_input_level(game_.input);
         }
-        const int code = squid_input_calibrate(input_, state);
-        note(code);
-        if (code != RV_OK) {
-            return;
+        const squid_button_row *row = button_row(pressed, game_.phase);
+        if (row == nullptr) {
+            return RV_OK;
         }
-        RV_LOG_INFO(SQUID_MAID_TAG,
-            "calibrated: neutral quat ({:.3f}, {:.3f}, {:.3f}, {:.3f})",
-            input_.neutral.x,
-            input_.neutral.y,
-            input_.neutral.z,
-            input_.neutral.w);
+        const bool calibrating = row->command == squid_command::calibrate;
+        if (calibrating && !sensor_) {
+            RV_LOG_INFO(SQUID_MAID_TAG, "calibration without a gyro: the neutral stays as it is");
+        }
+        const int code = squid_game_command(game_, row->command, state, abilities);
+        // Only a gyro calibration sets the neutral, so only it plays the calibrate sound.
+        if (code == RV_OK) {
+            happened[static_cast<std::size_t>(squid_frame_event::calibrate)] = calibrating && sensor_;
+        }
+        return code;
+    }
+
+    // Round events by comparison with the frame's start. Start is only the ready -> play entry: a resume from pause
+    // is not a start. Then the frame's sound is played.
+    int sound_changes(squid_phase phase_before, int hits_before, squid_frame_flags &happened)
+    {
+        happened[static_cast<std::size_t>(squid_frame_event::hit)] = game_.sequence.hits > hits_before;
+        happened[static_cast<std::size_t>(squid_frame_event::start)] =
+            phase_before == squid_phase::ready && game_.phase == squid_phase::play;
+        happened[static_cast<std::size_t>(squid_frame_event::finish)] =
+            game_.phase == squid_phase::result && phase_before != squid_phase::result;
+        return play(happened);
+    }
+
+    // Plays the sound of the first rule that happened; a frame with no event plays nothing.
+    int play(const squid_frame_flags &happened)
+    {
+        const squid_sound_rule *rule = sound_rule(happened);
+        if (rule == nullptr) {
+            return RV_OK;
+        }
+        return squid_sound_play(pdk_, sound_, rule->sound);
     }
 
     void log_state()
     {
         RV_LOG_INFO(SQUID_MAID_TAG,
-            "frame {} source {} tilt x {:+.2f} z {:+.2f} orbit {:.4f} turn, refusals {} last rv_err {}",
+            "frame {} phase {} source {} tilt x {:+.2f} z {:+.2f} orbit {:.4f} turn, "
+            "hits {} of {}, time {:.2f} s, refusals {} last rv_err {}",
             frame_index_,
+            SQUID_PHASE_NAMES[static_cast<std::size_t>(game_.phase)],
             sensor_ ? "sensor" : "reserve",
-            input_.smoothed.x_deg,
-            input_.smoothed.z_deg,
-            orbit_.phase_rad / SQUID_ORBIT_TAU_RAD,
+            game_.input.smoothed.x_deg,
+            game_.input.smoothed.z_deg,
+            game_.orbit.phase_rad / SQUID_ORBIT_TAU_RAD,
+            game_.sequence.hits,
+            SQUID_TARGET_COUNT,
+            game_.time_s,
             refusals_,
             last_refusal_);
     }
@@ -182,7 +289,7 @@ private:
         draw_step("orbit", squid_draw_ring(cg, cv, rotation_));
         draw_step("cross", squid_draw_cross(cg, cv));
         if (font_ready_) {
-            draw_step("text", squid_draw_text(cv, font_style(), input_.smoothed, sensor_));
+            draw_step("text", squid_draw_text(cv, font_style(), game_.input.smoothed, sensor_));
         }
     }
 
@@ -208,8 +315,8 @@ private:
         return rv_pdklib::rv_font_style_make(addr_font_, addr_palette_, SQUID_DRAW_TEXT_DEPTH, SQUID_DRAW_FONT_SCALE);
     }
 
-    squid_input input_;
-    squid_orbit orbit_;
+    squid_game game_;
+    squid_sound sound_;
     // The orbit's tilt, taken from the shown tilt each frame; kept when the conversion refuses.
     rv_pdklib::fx_vec3 rotation_{};
     rv_pdklib::ecs_world world_;
