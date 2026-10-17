@@ -33,6 +33,9 @@ constexpr float SQUID_DEAD_ZONE_DEG = 2.0f;
 // Time constant of input smoothing, in seconds; hand tremor does not become tremor of the world.
 constexpr float SQUID_SMOOTHING_S = 0.08f;
 
+// Speed of the target tilt change by the reserve keys, in degrees per second: full travel 0 -> 35 takes half a second.
+constexpr float SQUID_KEY_TILT_RATE_DEG_S = 70.0f;
+
 // Number of targets in a round's sequence; one is active, and the next starts after a hit.
 constexpr int SQUID_TARGET_COUNT = 8;
 
