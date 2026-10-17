@@ -68,11 +68,11 @@ const squid_button_row *button_row(uint64_t pressed, squid_phase phase)
     return it == SQUID_BUTTON_ROWS.end() ? nullptr : &*it;
 }
 
-// Events of one frame that may carry a sound: a press's calibration, the entry into play and a frame with a split.
+// Events of one frame that may carry a sound: a calibrate-type press, a frame with a split and a frame with a bounce.
 enum class squid_frame_event : int {
     calibrate = 0,
-    start = 1,
-    split = 2,
+    split = 1,
+    bounce = 2,
 };
 // Count of the enum above; the flags are indexed by it.
 constexpr std::size_t SQUID_FRAME_EVENT_COUNT = 3;
@@ -83,15 +83,16 @@ struct squid_sound_rule {
     squid_sound_event sound;
 };
 
-// One sound per frame, the first rule whose event happened: the single voice would cut the others anyway.
+// One sound per frame, the first rule whose event happened: the table order is the priority, the single voice would cut
+// the others anyway.
 constexpr auto SQUID_SOUND_RULES = std::to_array<squid_sound_rule>({
-    { squid_frame_event::start, squid_sound_event::start },
     { squid_frame_event::calibrate, squid_sound_event::calibrate },
     { squid_frame_event::split, squid_sound_event::split },
+    { squid_frame_event::bounce, squid_sound_event::bounce },
 });
 
 // The flags, the events and the rules must agree: one flag per event, and every event has a rule.
-static_assert(static_cast<std::size_t>(squid_frame_event::split) + 1 == SQUID_FRAME_EVENT_COUNT,
+static_assert(static_cast<std::size_t>(squid_frame_event::bounce) + 1 == SQUID_FRAME_EVENT_COUNT,
     "SQUID_FRAME_EVENT_COUNT must equal the number of squid_frame_event values");
 constexpr bool squid_sound_rules_cover_events()
 {
@@ -168,7 +169,7 @@ public:
         pad_buttons_ = state.buttons;
         sensor_ = (abilities & RV_ISOURCE_GYRO_MOVE) != 0;
 
-        // Sounds compare the phase with its value before this frame's press and step.
+        // The start log compares the phase with its value before this frame's press and step.
         const squid_phase phase_before = game_.phase;
         squid_frame_flags happened{};
         // The debug panel's switch: each press of the left bumper flips it; it starts off.
@@ -185,8 +186,10 @@ public:
         if (std::isfinite(target.x_deg) && std::isfinite(target.z_deg)) {
             target_tilt_ = target;
         }
-        note(sound_changes(phase_before, stepped, happened));
-        if (happened[static_cast<std::size_t>(squid_frame_event::start)]) {
+        note(sound_changes(stepped, happened));
+        // The round start has no sound; it logs the config once.
+        const bool started = phase_before == squid_phase::ready && game_.phase == squid_phase::play;
+        if (started) {
             note(log_config(sensor_));
         }
         note(squid_scene_tilt(game_.input.smoothed.x_deg, game_.input.smoothed.z_deg, rotation_));
@@ -260,22 +263,21 @@ private:
             RV_LOG_INFO(SQUID_MAID_TAG, "calibration without a gyro: the neutral stays as it is");
         }
         const int code = squid_game_command(game_, row->command, state, abilities);
-        // Only a gyro calibration sets the neutral, so only it plays the calibrate sound.
+        // Only a gyro calibration sets the neutral; pause, resume and restart play the calibrate sound too, a start none.
+        const bool silent = row->command == squid_command::start || (calibrating && !sensor_);
         if (code == RV_OK) {
-            happened[static_cast<std::size_t>(squid_frame_event::calibrate)] = calibrating && sensor_;
+            happened[static_cast<std::size_t>(squid_frame_event::calibrate)] = !silent;
         }
         return code;
     }
 
-    // Round events by comparison with the frame's start. Start is only the ready -> play entry: a resume from pause
-    // is not a start. A split is a stepped frame with a split count, however many splits it holds: one sound per frame.
-    // A step refused for its dt keeps last frame's counts, so only a stepped frame can carry a split.
-    // Then the frame's sound is played.
-    int sound_changes(squid_phase phase_before, bool stepped, squid_frame_flags &happened)
+    // Round events of a stepped frame: a split or a bounce. A split is a count of splits, however many it holds, and a
+    // bounce a count of bounces. A step refused for its dt keeps last frame's counts, so only a stepped frame can carry
+    // either. The frame plays one sound: the first rule of SQUID_SOUND_RULES that happened.
+    int sound_changes(bool stepped, squid_frame_flags &happened)
     {
-        happened[static_cast<std::size_t>(squid_frame_event::start)] =
-            phase_before == squid_phase::ready && game_.phase == squid_phase::play;
         happened[static_cast<std::size_t>(squid_frame_event::split)] = stepped && game_.events.splits > 0;
+        happened[static_cast<std::size_t>(squid_frame_event::bounce)] = stepped && game_.events.bounces > 0;
         return play(happened);
     }
 
@@ -286,14 +288,20 @@ private:
         if (rule == nullptr) {
             return RV_OK;
         }
-        return squid_sound_play(pdk_, sound_, rule->sound);
+        bool started = false;
+        const int code = squid_sound_play(pdk_, sound_, rule->sound, started);
+        if (started) {
+            ++sounds_started_;
+        }
+        return code;
     }
 
+    // Logs the state, then restarts the count of sounds started, so each line counts the frames since the last one.
     void log_state()
     {
         RV_LOG_INFO(SQUID_MAID_TAG,
             "frame {} phase {} source {} tilt x {:+.2f} z {:+.2f} bodies {}, splits {} absorbs {}, "
-            "refusals {} last rv_err {}",
+            "sounds {}, refusals {} last rv_err {}",
             frame_index_,
             SQUID_PHASE_NAMES[static_cast<std::size_t>(game_.phase)],
             sensor_ ? "sensor" : "reserve",
@@ -302,8 +310,10 @@ private:
             game_.bodies.count,
             game_.events.splits,
             game_.events.absorbs,
+            sounds_started_,
             refusals_,
             last_refusal_);
+        sounds_started_ = 0;
     }
 
     // The tilt the input asks for this frame; the smoothed game tilt follows it.
@@ -422,6 +432,8 @@ private:
     int64_t frame_index_ = 0;
     int refusals_ = 0;
     int last_refusal_ = RV_OK;
+    // Sounds started since the last state line.
+    int sounds_started_ = 0;
     int64_t addr_font_ = 0;
     int64_t addr_palette_ = 0;
     bool font_ready_ = false;

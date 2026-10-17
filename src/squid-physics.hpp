@@ -39,10 +39,12 @@ struct squid_bodies {
     int count = 0;
 };
 
-// Splits and absorbs, counted over a pass, a substep or a frame; the main loop plays a sound per split.
+// Splits, absorbs and bounces, counted over a pass, a substep or a frame; the main loop plays one sound per frame, by priority,
+// from them. A bounce is counted only at an approach of SQUID_BOUNCE_SOUND_MIN_SPEED or more.
 struct squid_event_counts {
     int splits = 0;
     int absorbs = 0;
+    int bounces = 0;
 };
 
 // A touching approaching pair with a split or an absorb, recorded in the pair pass and applied after its loops.
@@ -253,6 +255,10 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
             b.pos.z += nz * push * ma / (ma + mb);
             if (!approaching) {
                 continue;
+            }
+            // A resolved, approaching pair with no split or absorb is a plain bounce; a split pair is counted by its split.
+            if (resolved && !has_event && -vn >= SQUID_BOUNCE_SOUND_MIN_SPEED) {
+                ++counts.bounces;
             }
             // The slide turns into rolling: a and b share one constraint, the slip at the contact. Each spin takes half of
             // the kick that removes it (gain 1), so both keep the same sense about y.

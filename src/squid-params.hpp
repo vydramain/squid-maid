@@ -110,6 +110,10 @@ constexpr float SQUID_SPLIT_UNEQUAL_FACTOR = 2.0f;
 // Ball-ball restitution: billiard-like elastic balls.
 constexpr float SQUID_BALL_RESTITUTION = 0.85f;
 
+// Smallest approach speed, in units/s, of a plain bounce that counts for the bounce sound: a slower contact is a pile
+// settling, not a hit. Starting value, tuned by ear.
+constexpr float SQUID_BOUNCE_SOUND_MIN_SPEED = 1.0f;
+
 // Edge restitution: the edge absorbs more, so balls do not race around forever.
 constexpr float SQUID_RIM_RESTITUTION = 0.6f;
 
