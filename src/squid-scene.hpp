@@ -1,8 +1,9 @@
 #pragma once
 
 // The scene of the squid game in the ECS (docs/disdoc.md, 6, 10, 15.2): the tilt root with Alkoldun as its child, and
-// the debris target outside the root. The disc writes the pose each frame; the ECS transform turns it into world matrices.
+// the debris targets outside the root. The disc writes the pose each frame; the ECS transform turns it into world matrices.
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 
@@ -30,15 +31,25 @@ inline constexpr const char *SQUID_SCENE_TAG = "scene";
 inline constexpr const char *SQUID_SCENE_FILE = "main.scene.toml";
 inline constexpr const char *SQUID_SCENE_TILT_NAME = "tilt";
 inline constexpr const char *SQUID_SCENE_ALKOLDUN_NAME = "alkoldun";
-inline constexpr const char *SQUID_SCENE_DEBRIS_NAME = "debris";
+// Scene object of each target, in sequence order (index = target index); the code places each at its target.
+inline constexpr std::array<const char *, SQUID_TARGET_COUNT> SQUID_SCENE_DEBRIS_NAMES{
+    "junk_crt",
+    "junk_floppy",
+    "junk_cassette",
+    "junk_phone",
+    "junk_tube",
+    "junk_reel",
+    "junk_punchcard",
+    "junk_calculator",
+};
 // The frame system that sets the camera of the scene's models; it is registered under this name.
 inline constexpr const char *SQUID_SCENE_CAMERA_SYSTEM = "squid-camera";
 
-// Entities of the scene objects the disc moves or reports.
+// Entities of the scene objects the disc moves or reports; debris[i] is the object of target i.
 struct squid_scene_objects {
     rv_pdklib::ecs_id tilt{};
     rv_pdklib::ecs_id alkoldun{};
-    rv_pdklib::ecs_id debris{};
+    std::array<rv_pdklib::ecs_id, SQUID_TARGET_COUNT> debris{};
 };
 
 // Entity of the object with the name, in load order. A missing object is an error; the name is in the log.
@@ -101,7 +112,7 @@ inline int squid_scene_fx_point(rv_pdklib::rv_vec3 point, rv_pdklib::fx_vec3 &ou
     return RV_OK;
 }
 
-// The debris target sits at the first target of the sequence; the code, not the scene file, sets its position.
+// Each debris object sits at its target's position; the code, not the scene file, sets them.
 inline int squid_scene_place_debris(rv_pdklib::ecs_world &world, const squid_scene_objects &objects)
 {
     squid_targets targets{};
@@ -109,15 +120,17 @@ inline int squid_scene_place_debris(rv_pdklib::ecs_world &world, const squid_sce
     if (build_code != RV_OK) {
         return build_code;
     }
-    rv_pdklib::ecs_component_transform *debris =
-        rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, objects.debris);
-    if (debris == nullptr) {
-        RV_LOG_ERR(SQUID_SCENE_TAG, "'{}' object has no transform", SQUID_SCENE_DEBRIS_NAME);
-        return RV_ERR_NOENT;
-    }
-    const int point_code = squid_scene_fx_point(targets[0].position, debris->position);
-    if (point_code != RV_OK) {
-        return point_code;
+    for (int i = 0; i < SQUID_TARGET_COUNT; ++i) {
+        rv_pdklib::ecs_component_transform *debris =
+            rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, objects.debris[i]);
+        if (debris == nullptr) {
+            RV_LOG_ERR(SQUID_SCENE_TAG, "'{}' object has no transform", SQUID_SCENE_DEBRIS_NAMES[i]);
+            return RV_ERR_NOENT;
+        }
+        const int point_code = squid_scene_fx_point(targets[i].position, debris->position);
+        if (point_code != RV_OK) {
+            return point_code;
+        }
     }
     return RV_OK;
 }
@@ -134,9 +147,11 @@ inline int squid_scene_check_and_place(rv_pdklib::ecs_world &world, squid_scene_
     if (alkoldun_code != RV_OK) {
         return alkoldun_code;
     }
-    const int debris_code = squid_scene_find(world, SQUID_SCENE_DEBRIS_NAME, objects.debris);
-    if (debris_code != RV_OK) {
-        return debris_code;
+    for (int i = 0; i < SQUID_TARGET_COUNT; ++i) {
+        const int debris_code = squid_scene_find(world, SQUID_SCENE_DEBRIS_NAMES[i], objects.debris[i]);
+        if (debris_code != RV_OK) {
+            return debris_code;
+        }
     }
     const rv_pdklib::ecs_component_transform *tilt =
         rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, objects.tilt);
@@ -243,11 +258,12 @@ inline int squid_scene_world_point(rv_pdklib::ecs_world &world, rv_pdklib::ecs_i
     return RV_OK;
 }
 
-// Logs the world positions of the debris and of Alkoldun: the debris stays where it is while the tilt changes.
+// Logs the world positions of the first target's debris and of Alkoldun: the debris stays where it is while the tilt
+// changes.
 inline int squid_scene_log(rv_pdklib::ecs_world &world, const squid_scene_objects &objects)
 {
     rv_pdklib::rv_vec3 debris{};
-    const int debris_code = squid_scene_world_point(world, objects.debris, debris);
+    const int debris_code = squid_scene_world_point(world, objects.debris[0], debris);
     if (debris_code != RV_OK) {
         return debris_code;
     }

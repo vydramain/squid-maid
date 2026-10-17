@@ -1,7 +1,10 @@
 # The scene of the squid-maid prototype (docs/disdoc.md, sections 6, 10, 15.2). The tilt root sits at the origin with
 # scale 1 and no parent; the disc writes its rotation each frame. Alkoldun's position is also written each frame.
-# Values are Q20.12 (4096 = 1.0). The debris position is set by code (the first target of squid_sequence_build),
-# so the position below is a placeholder.
+# Values are Q20.12 (4096 = 1.0). The debris positions are set by code (squid_scene_place_debris: the target of each
+# junk object, in sequence order), so the positions of the junk objects below are placeholders.
+# The three elephants stand in a row (x = -1.1, 0, 1.1; z = 0) on the turtle, whose shell is scaled 2.5 x 0.3 x 1.4
+# (its top at y = -1.85). Each foot sits 0.00 to 0.03 into the shell, none hangs over it. The feet are at y = -1.9 and
+# the model is 1.6 high, so the backs touch the plate's underside at y = -0.3. The turtle's origin is at y = -2.12.
 
 [scene]
 version = "1.1"
@@ -28,6 +31,12 @@ scale = [4096, 4096, 4096]
 mesh = "earth.gltf"
 texture = ""
 
+# The plate is drawn in the decal window, nearer than the models under it: it covers the elephants and the part of
+# the turtle under it, whose near faces would otherwise win the depth sort over the plate's large top triangles.
+[[component]]
+object = "7a500002"
+name = "decal"
+
 [[object]]
 id = "7a500003"
 name = "alkoldun"
@@ -40,13 +49,133 @@ mesh = "ball.gltf"
 texture = ""
 
 [[object]]
-id = "7a500004"
-name = "debris"
+id = "7a500021"
+name = "elephant_0"
+parent = "7a500001"
+kind = "mesh"
+position = [-4506, -7782, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = "elephant.gltf"
+texture = ""
+
+[[object]]
+id = "7a500022"
+name = "elephant_1"
+parent = "7a500001"
+kind = "mesh"
+position = [0, -7782, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = "elephant.gltf"
+texture = ""
+
+[[object]]
+id = "7a500023"
+name = "elephant_2"
+parent = "7a500001"
+kind = "mesh"
+position = [4506, -7782, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = "elephant.gltf"
+texture = ""
+
+[[object]]
+id = "7a500030"
+name = "turtle"
+parent = "7a500001"
+kind = "mesh"
+position = [0, -8689, 0]
+rotation = [0, 0, 0]
+scale = [10240, 1229, 5734]
+mesh = "turtle.gltf"
+texture = ""
+
+[[object]]
+id = "7a500011"
+name = "junk_crt"
 parent = ""
 kind = "mesh"
 position = [0, 0, 0]
 rotation = [0, 0, 0]
-scale = [1638, 1638, 1638]
-mesh = "ball.gltf"
+scale = [4096, 4096, 4096]
+mesh = "junk_crt.gltf"
 texture = ""
-tint = [128, 128, 128]
+
+[[object]]
+id = "7a500012"
+name = "junk_floppy"
+parent = ""
+kind = "mesh"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = "junk_floppy.gltf"
+texture = ""
+
+[[object]]
+id = "7a500013"
+name = "junk_cassette"
+parent = ""
+kind = "mesh"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = "junk_cassette.gltf"
+texture = ""
+
+[[object]]
+id = "7a500014"
+name = "junk_phone"
+parent = ""
+kind = "mesh"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = "junk_phone.gltf"
+texture = ""
+
+[[object]]
+id = "7a500015"
+name = "junk_tube"
+parent = ""
+kind = "mesh"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = "junk_tube.gltf"
+texture = ""
+
+[[object]]
+id = "7a500016"
+name = "junk_reel"
+parent = ""
+kind = "mesh"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = "junk_reel.gltf"
+texture = ""
+
+[[object]]
+id = "7a500017"
+name = "junk_punchcard"
+parent = ""
+kind = "mesh"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = "junk_punchcard.gltf"
+texture = ""
+
+[[object]]
+id = "7a500018"
+name = "junk_calculator"
+parent = ""
+kind = "mesh"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = "junk_calculator.gltf"
+texture = ""
