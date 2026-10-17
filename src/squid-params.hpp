@@ -53,6 +53,9 @@ constexpr float SQUID_BALL_RADIUS[] = { 0.225f, 0.285f, 0.36f, 0.45f };
 // 19 percent after a full split.
 constexpr int SQUID_START_BALLS = 10;
 
+// Marked bottles Alkoldun drinks to finish the round.
+constexpr int SQUID_BEER_GOAL = 3;
+
 // Alkoldun's mass in smallest units: it weighs like size 3; it never splits.
 constexpr int SQUID_ALKOLDUN_MASS = 4;
 

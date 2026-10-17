@@ -119,6 +119,8 @@ struct squid_game {
     // the physics (prepare, ready, pause, pad loss, a frame the physics refused); a step refused for its dt changes nothing.
     squid_bodies bodies{};
     squid_event_counts events{};
+    // Marked bottles drunk this round, filled by the bottles later.
+    int beer_drunk = 0;
     // Draws the body drift in play; reseeded with the layout seed on every build, so a round and its restart repeat.
     std::minstd_rand drift_rng{ SQUID_LAYOUT_SEED };
 };
@@ -255,8 +257,8 @@ inline int squid_game_calibrate(squid_game &g, const rv_istate &state, uint64_t 
     return squid_input_calibrate(g.input, state);
 }
 
-// Back to the round start: a fresh layout and the smoothed game tilt and keys level; the neutral is kept.
-// A refused layout changes nothing.
+// Back to the round start: a fresh layout, the smoothed game tilt and keys level, and the round's bottle count; the neutral is
+// kept. A refused layout changes nothing.
 inline int squid_game_restart(squid_game &g)
 {
     const int layout = squid_layout_build(g.bodies);
@@ -266,6 +268,7 @@ inline int squid_game_restart(squid_game &g)
     g.drift_rng.seed(SQUID_LAYOUT_SEED);
     squid_motion_birth(g.bodies, g.drift_rng);
     g.events = squid_event_counts{};
+    g.beer_drunk = 0;
     squid_input_level(g.input);
     g.input.smoothed = squid_tilt{};
     return RV_OK;
