@@ -45,6 +45,9 @@ struct squid_hud_debug {
     squid_tilt target{};
     squid_tilt actual{};
     bool sensor = false;
+    squid_census census{};
+    int round_splits = 0;
+    int round_absorbs = 0;
 };
 
 // Tables indexed by squid_phase: one row per phase, in enum order.
@@ -167,7 +170,25 @@ inline int squid_hud_hint(rv_cv *cv, rv_pdklib::rv_font_style style, int max_px,
     return RV_OK;
 }
 
-// The debug panel: title, phase, target and actual tilt, source, one line each.
+// The debug panel's lines, one string each: title, phase, target and actual tilt, source, ball counts by size, total mass,
+// the round's splits and absorbs, and the split-all key. Pure: the panel draws them, the harness reads them.
+inline auto squid_hud_debug_lines(const squid_hud_round &round, const squid_hud_debug &debug)
+{
+    const squid_census &c = debug.census;
+    return std::array{
+        std::string{ SQUID_TEXT_DEBUG_TITLE },
+        std::format(SQUID_TEXT_DEBUG_PHASE, SQUID_HUD_PHASE_LABELS[static_cast<std::size_t>(round.phase)]),
+        std::format(SQUID_TEXT_DEBUG_TARGET, SQUID_TEXT_AXIS_X, debug.target.x_deg, SQUID_TEXT_AXIS_Z, debug.target.z_deg),
+        std::format(SQUID_TEXT_DEBUG_ACTUAL, SQUID_TEXT_AXIS_X, debug.actual.x_deg, SQUID_TEXT_AXIS_Z, debug.actual.z_deg),
+        std::format(SQUID_TEXT_DEBUG_SOURCE, debug.sensor ? SQUID_TEXT_SOURCE_SENSOR : SQUID_TEXT_SOURCE_RESERVE),
+        std::format(SQUID_TEXT_DEBUG_BALLS, c.balls[0], c.balls[1], c.balls[2], c.balls[3]),
+        std::format(SQUID_TEXT_DEBUG_MASS, c.total_mass),
+        std::format(SQUID_TEXT_DEBUG_ROUND, debug.round_splits, debug.round_absorbs),
+        std::string{ SQUID_TEXT_DEBUG_SPLIT },
+    };
+}
+
+// The debug panel: the lines of squid_hud_debug_lines, one line each.
 inline int squid_hud_debug_panel(rv_cv *cv,
     rv_pdklib::rv_font_style style,
     int max_px,
@@ -175,13 +196,7 @@ inline int squid_hud_debug_panel(rv_cv *cv,
     const squid_hud_round &round,
     const squid_hud_debug &debug)
 {
-    const std::array lines{
-        std::string{ SQUID_TEXT_DEBUG_TITLE },
-        std::format(SQUID_TEXT_DEBUG_PHASE, SQUID_HUD_PHASE_LABELS[static_cast<std::size_t>(round.phase)]),
-        std::format(SQUID_TEXT_DEBUG_TARGET, SQUID_TEXT_AXIS_X, debug.target.x_deg, SQUID_TEXT_AXIS_Z, debug.target.z_deg),
-        std::format(SQUID_TEXT_DEBUG_ACTUAL, SQUID_TEXT_AXIS_X, debug.actual.x_deg, SQUID_TEXT_AXIS_Z, debug.actual.z_deg),
-        std::format(SQUID_TEXT_DEBUG_SOURCE, debug.sensor ? SQUID_TEXT_SOURCE_SENSOR : SQUID_TEXT_SOURCE_RESERVE),
-    };
+    const auto lines = squid_hud_debug_lines(round, debug);
     int first_code = RV_OK;
     for (const std::string &line : lines) {
         first_code = squid_hud_first(first_code, squid_hud_put_wrapped(cv, style, max_px, y, line));

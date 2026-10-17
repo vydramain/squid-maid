@@ -46,7 +46,8 @@ struct squid_button_row {
 };
 
 // Port 0 buttons by phase, named by the pad's labels: A (SOUTH) is the one "next" button, calibrate while preparing and
-// start when ready; Y (NORTH) recalibrates; View (MENU_BTTN_VIEW) pauses and resumes; B (EAST) restarts.
+// start when ready; Y (NORTH) recalibrates; View (MENU_BTTN_VIEW) pauses and resumes; B (EAST) restarts. L5 (lower left
+// rear) splits the balls in play and pause; frame_update passes it only while the debug panel is open.
 constexpr auto SQUID_BUTTON_ROWS = std::to_array<squid_button_row>({
     { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::prepare, squid_command::calibrate },
     { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::ready, squid_command::start },
@@ -56,6 +57,8 @@ constexpr auto SQUID_BUTTON_ROWS = std::to_array<squid_button_row>({
     { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::pause, squid_command::pause },
     { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::ready, squid_command::restart },
     { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::pause, squid_command::restart },
+    { RV_ISOURCE_REAR_BTTN_LEFT_LOWER, squid_phase::play, squid_command::split_all },
+    { RV_ISOURCE_REAR_BTTN_LEFT_LOWER, squid_phase::pause, squid_command::split_all },
 });
 
 // The first row the pressed buttons give in this phase. One row per frame: a command must not chain into the next
@@ -176,7 +179,9 @@ public:
         // The debug panel's switch: each press of the upper left rear button (L4) flips it; it starts off.
         const bool rear = (pressed & RV_ISOURCE_REAR_BTTN_LEFT_UPPER) != 0;
         debug_panel_ = debug_panel_ != rear;
-        note(press(pressed, state, abilities, happened));
+        // L5 is a command only while the panel is open; a closed panel masks it out before the table sees it.
+        const uint64_t commands = debug_panel_ ? pressed : pressed & ~RV_ISOURCE_REAR_BTTN_LEFT_LOWER;
+        note(press(commands, state, abilities, happened));
         const squid_phase phase_before_step = game_.phase;
         const int step_code = squid_game_step(game_, state, abilities, dt);
         note(step_code);
@@ -335,7 +340,12 @@ private:
 
     squid_hud_debug hud_debug() const
     {
-        return squid_hud_debug{ target_tilt_, game_.input.smoothed, sensor_ };
+        return squid_hud_debug{ target_tilt_,
+            game_.input.smoothed,
+            sensor_,
+            squid_census_of(game_.bodies),
+            game_.round_splits,
+            game_.round_absorbs };
     }
 
     // Input parameters, input source and the start layout: what a report needs to reproduce a round.

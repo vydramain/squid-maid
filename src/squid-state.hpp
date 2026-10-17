@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <numbers>
 #include <random>
 
@@ -41,7 +42,8 @@ enum class squid_command {
     calibrate,
     start,
     pause,
-    restart
+    restart,
+    split_all
 };
 // Events move the phase without a command.
 enum class squid_event {
@@ -50,12 +52,16 @@ enum class squid_event {
 
 // Enumerator counts, from the enums; the name and event tables are sized by them.
 constexpr std::size_t SQUID_PHASE_COUNT = static_cast<std::size_t>(squid_phase::pause) + 1;
-constexpr std::size_t SQUID_COMMAND_COUNT = static_cast<std::size_t>(squid_command::restart) + 1;
+constexpr std::size_t SQUID_COMMAND_COUNT = static_cast<std::size_t>(squid_command::split_all) + 1;
 constexpr std::size_t SQUID_EVENT_COUNT = static_cast<std::size_t>(squid_event::pad_lost) + 1;
 
 // Names for the refusal log, indexed by the enum value.
 inline constexpr std::array<const char *, SQUID_PHASE_COUNT> SQUID_PHASE_NAMES{ "prepare", "ready", "play", "pause" };
-inline constexpr std::array<const char *, SQUID_COMMAND_COUNT> SQUID_COMMAND_NAMES{ "calibrate", "start", "pause", "restart" };
+inline constexpr std::array<const char *, SQUID_COMMAND_COUNT> SQUID_COMMAND_NAMES{ "calibrate",
+    "start",
+    "pause",
+    "restart",
+    "split_all" };
 inline constexpr std::array<const char *, SQUID_EVENT_COUNT> SQUID_EVENT_NAMES{ "pad_lost" };
 
 template <std::size_t N>
@@ -87,6 +93,8 @@ inline constexpr auto SQUID_EDGES = std::to_array<squid_edge>({
     { squid_phase::pause, squid_command::pause, squid_phase::play },
     { squid_phase::ready, squid_command::restart, squid_phase::ready },
     { squid_phase::pause, squid_command::restart, squid_phase::ready },
+    { squid_phase::play, squid_command::split_all, squid_phase::play },
+    { squid_phase::pause, squid_command::split_all, squid_phase::pause },
 });
 
 // Phase changes that come from the round itself, not from a command.
@@ -119,6 +127,9 @@ struct squid_game {
     // the physics (prepare, ready, pause, pad loss, a frame the physics refused); a step refused for its dt changes nothing.
     squid_bodies bodies{};
     squid_event_counts events{};
+    // Splits and absorbs since the round start: the physics frames and the split-all command both add to them.
+    int round_splits = 0;
+    int round_absorbs = 0;
     // Marked bottles drunk this round, filled by the bottles later.
     int beer_drunk = 0;
     // Draws the body drift in play; reseeded with the layout seed on every build, so a round and its restart repeat.
@@ -257,6 +268,72 @@ inline int squid_game_calibrate(squid_game &g, const rv_istate &state, uint64_t 
     return squid_input_calibrate(g.input, state);
 }
 
+// Balls per size (index size - 1) and the total mass of the set; Alkoldun counts in the mass only.
+struct squid_census {
+    std::array<int, std::size(SQUID_BALL_RADIUS)> balls{};
+    int total_mass = 0;
+};
+
+inline squid_census squid_census_of(const squid_bodies &set)
+{
+    squid_census census{};
+    for (int i = 0; i < set.count; ++i) {
+        const squid_body &b = set.items[i];
+        census.total_mass += b.mass;
+        int size = 0;
+        if (b.kind == squid_kind::ball && squid_body_size(b, size) == RV_OK) {
+            ++census.balls[static_cast<std::size_t>(size - 1)];
+        }
+    }
+    return census;
+}
+
+// Balls of size 2 and up split under split-all; size 1 is the smallest and Alkoldun never splits.
+constexpr int SQUID_SPLIT_ALL_MIN_SIZE = 2;
+
+inline bool squid_splittable(const squid_body &b)
+{
+    int size = 0;
+    return b.kind == squid_kind::ball && squid_body_size(b, size) == RV_OK && size >= SQUID_SPLIT_ALL_MIN_SIZE;
+}
+
+// Split normal of split-all: the halves sit on its tangent, which is z for this normal.
+inline constexpr squid_flat SQUID_SPLIT_ALL_NORMAL{ 1.0f, 0.0f };
+
+// Splits every splittable ball once, in index order; the halves are appended, so none is split twice. The physics pushes
+// apart any overlap the halves make. Refused whole, with the set unchanged, when the set has no room for every split. A
+// split refused midway stops the command: splits holds the splits made, and the set holds them too.
+inline int squid_split_all(squid_bodies &set, int &splits)
+{
+    splits = 0;
+    const int count = set.count;
+    int wanted = 0;
+    for (int i = 0; i < count; ++i) {
+        wanted += squid_splittable(set.items[i]) ? 1 : 0;
+    }
+    if (count + wanted > SQUID_BODY_CAPACITY) {
+        RV_LOG_WARN(squid_state_tag,
+            "split all refused: {} splits need {} bodies, capacity {}",
+            wanted,
+            count + wanted,
+            SQUID_BODY_CAPACITY);
+        return RV_ERR_NOMEM;
+    }
+    for (int i = 0; i < count; ++i) {
+        if (!squid_splittable(set.items[i])) {
+            continue;
+        }
+        // Room was checked above, and every mass in the set is 1..8, so a refusal here cannot happen; it is still logged.
+        const int rc = squid_split_body(set, i, SQUID_SPLIT_ALL_NORMAL);
+        if (rc != RV_OK) {
+            RV_LOG_ERR(squid_state_tag, "split all stopped after {} splits: rv_err {}", splits, rc);
+            return rc;
+        }
+        ++splits;
+    }
+    return RV_OK;
+}
+
 // Back to the round start: a fresh layout, the smoothed game tilt and keys level, and the round's bottle count; the neutral is
 // kept. A refused layout changes nothing.
 inline int squid_game_restart(squid_game &g)
@@ -268,10 +345,21 @@ inline int squid_game_restart(squid_game &g)
     g.drift_rng.seed(SQUID_LAYOUT_SEED);
     squid_motion_birth(g.bodies, g.drift_rng);
     g.events = squid_event_counts{};
+    g.round_splits = 0;
+    g.round_absorbs = 0;
     g.beer_drunk = 0;
     squid_input_level(g.input);
     g.input.smoothed = squid_tilt{};
     return RV_OK;
+}
+
+// Split-all in play or pause: the round's split count takes every split made, also when the command stops midway.
+inline int squid_game_split_all(squid_game &g)
+{
+    int splits = 0;
+    const int rc = squid_split_all(g.bodies, splits);
+    g.round_splits += splits;
+    return rc;
 }
 
 // Runs the effect of an accepted command. A refused effect (bad calibration or layout) is returned and the phase stays.
@@ -282,6 +370,8 @@ inline int squid_game_apply(squid_game &g, squid_command command, const rv_istat
         return squid_game_calibrate(g, state, abilities);
     case squid_command::restart:
         return squid_game_restart(g);
+    case squid_command::split_all:
+        return squid_game_split_all(g);
     case squid_command::start:
     case squid_command::pause:
         break;
@@ -341,6 +431,8 @@ inline int squid_game_play(squid_game &g, const rv_istate &state, uint64_t abili
     }
     g.input = next_input;
     g.events = counts;
+    g.round_splits += counts.splits;
+    g.round_absorbs += counts.absorbs;
     return RV_OK;
 }
 

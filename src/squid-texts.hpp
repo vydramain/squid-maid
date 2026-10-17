@@ -41,5 +41,9 @@ constexpr std::string_view SQUID_TEXT_DEBUG_TARGET = "Наклон цель: {} 
 constexpr std::string_view SQUID_TEXT_DEBUG_ACTUAL = "Наклон факт: {} {:+.1f}  {} {:+.1f}";
 constexpr std::string_view SQUID_TEXT_DEBUG_SOURCE = "Источник: {}";
 constexpr std::string_view SQUID_TEXT_DEBUG_PHASE = "Фаза игры: {}";
+constexpr std::string_view SQUID_TEXT_DEBUG_BALLS = "Шары по размеру: 1: {}  2: {}  3: {}  4: {}";
+constexpr std::string_view SQUID_TEXT_DEBUG_MASS = "Масса всего: {}";
+constexpr std::string_view SQUID_TEXT_DEBUG_ROUND = "За раунд: разбиений {}, поглощений {}";
+constexpr std::string_view SQUID_TEXT_DEBUG_SPLIT = "(L5) разбить шары от 2 размера: в игре и на паузе";
 
 } // namespace squid
