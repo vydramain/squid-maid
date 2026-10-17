@@ -27,9 +27,6 @@ constexpr float SQUID_QUAT_MIN_NORM = 1e-6f;
 // Cosine of x below which z reads 0: at 90 degrees of x the roll is not defined.
 constexpr float SQUID_MIN_COS_TILT = 1e-6f;
 
-// Gain from the dead zone edge to the game limit: full physical tilt maps to the limit.
-constexpr float SQUID_SHAPE_GAIN = SQUID_TILT_LIMIT_DEG / (SQUID_FULL_INPUT_TILT_DEG - SQUID_DEAD_ZONE_DEG);
-
 // Radians to degrees; the tilt angles come from asin in radians and are shown in degrees.
 constexpr float SQUID_RAD_TO_DEG = 180.0f / std::numbers::pi_v<float>;
 
@@ -57,15 +54,18 @@ inline squid_tilt squid_tilt_clamp(squid_tilt t)
     return squid_tilt{ std::clamp(t.x_deg, -lim, lim), std::clamp(t.z_deg, -lim, lim) };
 }
 
-// Zero inside the dead zone; outside it, the excess times the gain. NaN gives 0.
+// Zero inside the dead zone; outside it, the excess mapped to 0..1 over the span up to full input tilt, then the
+// cubic-linear curve times the game limit. NaN gives 0.
 inline float squid_shape_axis(float deg)
 {
     const float beyond = std::fabs(deg) - SQUID_DEAD_ZONE_DEG;
-    const float shaped = beyond > 0.0f ? beyond * SQUID_SHAPE_GAIN : 0.0f;
-    return std::copysign(shaped, deg);
+    const float span = SQUID_FULL_INPUT_TILT_DEG - SQUID_DEAD_ZONE_DEG;
+    const float u = beyond > 0.0f ? std::min(beyond / span, 1.0f) : 0.0f;
+    const float curve = SQUID_TILT_CUBIC_SHARE * u * u * u + (1.0f - SQUID_TILT_CUBIC_SHARE) * u;
+    return std::copysign(SQUID_TILT_LIMIT_DEG * curve, deg);
 }
 
-// Dead zone and gain per axis, then the limit; the dead zone starts at zero, so there is no jump at its edge.
+// Dead zone and curve per axis, then the limit; the dead zone starts at zero, so there is no jump at its edge.
 inline squid_tilt squid_input_shape(squid_tilt physical)
 {
     return squid_tilt_clamp(squid_tilt{ squid_shape_axis(physical.x_deg), squid_shape_axis(physical.z_deg) });

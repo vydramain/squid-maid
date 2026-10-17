@@ -21,6 +21,11 @@ constexpr float SQUID_DEAD_ZONE_DEG = 2.0f;
 // reaches the world more slowly.
 constexpr float SQUID_SMOOTHING_S = 0.2f;
 
+// Cubic share of the pad-to-game tilt curve; the linear rest is 1 minus it. The linear part sets the slope at the dead
+// zone edge (0.46 game deg per pad deg, against 1.52 for the old linear gain); the cubic part steepens the curve
+// toward full tilt, and full input still reaches the limit.
+constexpr float SQUID_TILT_CUBIC_SHARE = 0.7f;
+
 // Speed of the target tilt change by the reserve keys, in degrees per second: full travel 0 -> 35 takes half a second.
 constexpr float SQUID_KEY_TILT_RATE_DEG_S = 70.0f;
 
