@@ -7,3 +7,11 @@ sources = ["src/*.cpp"]
 
 [assets]
 files = ["scenes/*.scene.toml"]
+
+[textures]
+# No separate textures yet; format is still required by [models].
+files = []
+format = "idx8"
+
+[models]
+files = ["assets/models/*.gltf"]
