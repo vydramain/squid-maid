@@ -24,9 +24,9 @@
 			"name":"m4_microwave",
 			"pbrMetallicRoughness":{
 				"baseColorFactor":[
-					0.8199999928474426,
-					0.800000011920929,
-					0.7400000095367432,
+					0.686,
+					0.68,
+					0.659,
 					1
 				],
 				"metallicFactor":0,
@@ -38,9 +38,9 @@
 			"name":"m4_microwave.001",
 			"pbrMetallicRoughness":{
 				"baseColorFactor":[
-					0.1599999964237213,
-					0.1599999964237213,
-					0.18000000715255737,
+					0.137,
+					0.137,
+					0.144,
 					1
 				],
 				"metallicFactor":0,

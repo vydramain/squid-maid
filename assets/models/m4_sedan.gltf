@@ -24,9 +24,9 @@
 			"name":"m4_sedan",
 			"pbrMetallicRoughness":{
 				"baseColorFactor":[
-					0.699999988079071,
-					0.7799999713897705,
-					0.8799999952316284,
+					0.629,
+					0.657,
+					0.691,
 					1
 				],
 				"metallicFactor":0,
@@ -38,9 +38,9 @@
 			"name":"m4_sedan.001",
 			"pbrMetallicRoughness":{
 				"baseColorFactor":[
-					0.1599999964237213,
-					0.1599999964237213,
-					0.18000000715255737,
+					0.137,
+					0.137,
+					0.144,
 					1
 				],
 				"metallicFactor":0,
