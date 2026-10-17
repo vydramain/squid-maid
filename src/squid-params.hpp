@@ -17,15 +17,16 @@ constexpr float SQUID_FULL_INPUT_TILT_DEG = 25.0f;
 // Smooth dead zone around neutral, in degrees, with no jump at its edge; damps small hand tremor.
 constexpr float SQUID_DEAD_ZONE_DEG = 2.0f;
 
-// Time constant of input smoothing, in seconds; hand tremor does not become tremor of the world.
-constexpr float SQUID_SMOOTHING_S = 0.08f;
+// Time constant of input smoothing, in seconds; hand tremor does not become tremor of the world, and the tilt
+// reaches the world more slowly.
+constexpr float SQUID_SMOOTHING_S = 0.2f;
 
 // Speed of the target tilt change by the reserve keys, in degrees per second: full travel 0 -> 35 takes half a second.
 constexpr float SQUID_KEY_TILT_RATE_DEG_S = 70.0f;
 
-// Radius of the invisible dome; 3.04, measured from the scene meshes, is the plate corner's distance from the mass centre,
-// so the 0.46 gap keeps the whole structure under it.
-constexpr float SQUID_DOME_RADIUS = 3.5f;
+// Radius of the invisible dome; the plate corner is 1.25 * 3.04 = 3.80 from the mass centre once the structure
+// is scaled by 1.25, so the 0.70 gap keeps the whole structure under it.
+constexpr float SQUID_DOME_RADIUS = 4.5f;
 
 // Dome centre = mass centre of the Earth, the three elephants and the turtle (mesh volumes in the scene transforms).
 constexpr float SQUID_DOME_CENTER_X = -0.012f;
@@ -36,32 +37,32 @@ constexpr float SQUID_DOME_CENTER_Z = -0.059f;
 // at 60 deg 17 percent, and the edge ring sits above the plate.
 constexpr float SQUID_DISC_EDGE_DEG = 60.0f;
 
-// Flat disc radius (about 3.67): the dome arc length from the top to the edge.
+// Flat disc radius (about 4.71): the dome arc length from the top to the edge.
 constexpr float SQUID_DISC_RADIUS = SQUID_DOME_RADIUS * SQUID_DISC_EDGE_DEG * std::numbers::pi_v<float> / 180.0f;
 
 // Ball radius by size, index size - 1 (size 1 smallest .. 4); grows as mass^(1/3) for masses 1, 2, 4, 8.
-// Size 4 is estimated ~36 px on 320x240.
-constexpr float SQUID_BALL_RADIUS[] = { 0.30f, 0.38f, 0.48f, 0.60f };
+// Size 4 is about 20 px across on 320x240 at 21.8 px per unit, size 1 about 10 px.
+constexpr float SQUID_BALL_RADIUS[] = { 0.225f, 0.285f, 0.36f, 0.45f };
 
-// Balls of size 4 at the start; with Alkoldun the total mass is 84 smallest units: 28.5 percent of the disc area,
-// 56.3 percent after a full split.
+// Balls of size 4 at the start; with Alkoldun the total mass is 84 smallest units: 9.7 percent of the disc area,
+// 19 percent after a full split.
 constexpr int SQUID_START_BALLS = 10;
 
 // Alkoldun's mass in smallest units: it weighs like size 3; it never splits.
 constexpr int SQUID_ALKOLDUN_MASS = 4;
 
-// Gravity along the tilted disc, in units/s^2; at 35 deg tilt a = 5.2 and centre to edge takes 1.2 s, so the tilt
-// is felt at once and does not throw the balls.
-constexpr float SQUID_GRAVITY = 9.0f;
+// Gravity along the tilted disc, in units/s^2; at 35 deg tilt a = 3.44 and centre to edge (4.71) without damping
+// takes 1.65 s, so the tilt is felt at once and does not throw the balls.
+constexpr float SQUID_GRAVITY = 6.0f;
 
-// Speed decays with a 2 s time constant (exp(-0.5 t)); a ball rolls about 2 s after the pad is levelled.
-constexpr float SQUID_DAMPING_PER_S = 0.5f;
+// Speed decays with a 5 s time constant (exp(-0.2 t)); after the pad is levelled the balls float on as in weightlessness.
+constexpr float SQUID_DAMPING_PER_S = 0.2f;
 
-// Speed cap in units/s; 8 is below the ~8.7 run across the whole disc without damping, so it caps that run
-// and bounds the tunnelling check.
+// Speed cap in units/s; 8 is below the ~8.05 run across the whole disc without damping at this gravity, so it caps
+// that run and bounds the tunnelling check.
 constexpr float SQUID_SPEED_MAX = 8.0f;
 
-// Physics substeps per 60 Hz frame (1/240 s each): travel per substep 8/240 = 0.033 is under r1/4 = 0.075,
+// Physics substeps per 60 Hz frame (1/240 s each): travel per substep 8/240 = 0.033 is under r1/4 = 0.056,
 // a quarter of the smallest radius, so a ball cannot skip past another.
 constexpr int SQUID_SUBSTEPS = 4;
 
@@ -82,27 +83,22 @@ constexpr float SQUID_RIM_RESTITUTION = 0.6f;
 // so they do not merge again on a weak touch.
 constexpr float SQUID_SPLIT_SEPARATION_SPEED = 0.6f;
 
-// Camera elevation for the dome view; estimated: at the old 35 deg the far half of the disc is squeezed into a strip.
-constexpr float SQUID_DOME_CAMERA_ELEVATION_DEG = 55.0f;
-
-// Share of the game tilt that the world on screen tilts by (up to ~12 deg); estimated: at the full 35 deg the dome leaves
-// the frame, or the scale drops to ~23 px per unit.
+// Share of the game tilt that the world on screen tilts by: up to about 11.7 deg (35 / 3).
 constexpr float SQUID_VISIBLE_TILT_SHARE = 1.0f / 3.0f;
 
-// Debug view camera: the eye sits this far above the disc plane, looking at the Earth's centre.
-constexpr float SQUID_CAMERA_ELEVATION_DEG = 35.0f;
+// Scene camera elevation above the disc plane, in degrees; the eye sits low so the dome cap reads as an arc,
+// not a flat disc seen from the pole.
+constexpr float SQUID_CAMERA_ELEVATION_DEG = 15.0f;
 
-// Vertical field of view in degrees; narrow, so the perspective reads close to a flat picture.
-constexpr float SQUID_CAMERA_FOV_DEG = 12.0f;
+// Vertical field of view in degrees; the distance below is computed for it.
+constexpr float SQUID_CAMERA_FOV_DEG = 30.0f;
 
-// Eye distance from the Earth's centre for the old orbit picture. The frame (320x240, so the vertical fov is the limit)
-// must hold a sphere of radius 6.4 (orbit plus debris): at a half fov of 6 degrees it needs 6.4 / sin(6 deg) = 61.2;
-// 70 leaves about 14 percent of margin. A later change replaces these numbers with the dome camera.
-constexpr float SQUID_CAMERA_DISTANCE = 70.0f;
+// Eye distance from the look-at point; the dome cap with size-4 balls and the plate stay inside the 320x240 frame
+// at a visible tilt of +-12 deg on both axes (35 / 3 = 11.7, rounded up), look-at at the origin or at y 0.6.
+constexpr float SQUID_CAMERA_DISTANCE = 20.5f;
 
-// Clip planes. The nearest point of the sphere is 70 - 6.4 = 63.6 away, the farthest 76.4; the planes lie outside that
-// range, so nothing of the scene is cut.
-constexpr float SQUID_CAMERA_NEAR = 10.0f;
-constexpr float SQUID_CAMERA_FAR = 150.0f;
+// Clip planes. The dome sphere with size-4 balls lies about 16 to 26 from the eye; near 8 and far 40 cut none of it.
+constexpr float SQUID_CAMERA_NEAR = 8.0f;
+constexpr float SQUID_CAMERA_FAR = 40.0f;
 
 } // namespace squid
