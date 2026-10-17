@@ -1,6 +1,6 @@
 #pragma once
 
-// Squid-maid sound effects (docs/disdoc.md, section 11): four one-shots, one per event, on a single voice.
+// Squid-maid sound effects: three one-shots, one per event, on a single voice.
 // A new event cuts the one still playing.
 
 #include <cstdint>
@@ -19,12 +19,11 @@ namespace squid
 enum class squid_sound_event : int {
     calibrate = 0,
     start = 1,
-    hit = 2,
-    finish = 3,
+    split = 2,
 };
 
 // One entry per event, in enum order.
-constexpr int SQUID_SOUND_COUNT = 4;
+constexpr int SQUID_SOUND_COUNT = 3;
 
 // Log tag of sound messages.
 inline constexpr const char *squid_sound_tag = "sound";
@@ -34,7 +33,6 @@ constexpr const char *SQUID_SOUND_ASSET[SQUID_SOUND_COUNT] = {
     "sfx_calibrate.pcm",
     "sfx_start.pcm",
     "sfx_hit.pcm",
-    "sfx_finish.pcm",
 };
 
 // The one voice: bit 0 of the voice mask. Every event is played on it, so a new event cuts the previous one.

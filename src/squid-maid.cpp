@@ -68,13 +68,14 @@ const squid_button_row *button_row(uint64_t pressed, squid_phase phase)
     return it == SQUID_BUTTON_ROWS.end() ? nullptr : &*it;
 }
 
-// Events of one frame that may carry a sound: a press's calibration and the entry into play.
+// Events of one frame that may carry a sound: a press's calibration, the entry into play and a frame with a split.
 enum class squid_frame_event : int {
     calibrate = 0,
     start = 1,
+    split = 2,
 };
 // Count of the enum above; the flags are indexed by it.
-constexpr std::size_t SQUID_FRAME_EVENT_COUNT = 2;
+constexpr std::size_t SQUID_FRAME_EVENT_COUNT = 3;
 using squid_frame_flags = std::array<bool, SQUID_FRAME_EVENT_COUNT>;
 
 struct squid_sound_rule {
@@ -86,10 +87,11 @@ struct squid_sound_rule {
 constexpr auto SQUID_SOUND_RULES = std::to_array<squid_sound_rule>({
     { squid_frame_event::start, squid_sound_event::start },
     { squid_frame_event::calibrate, squid_sound_event::calibrate },
+    { squid_frame_event::split, squid_sound_event::split },
 });
 
 // The flags, the events and the rules must agree: one flag per event, and every event has a rule.
-static_assert(static_cast<std::size_t>(squid_frame_event::start) + 1 == SQUID_FRAME_EVENT_COUNT,
+static_assert(static_cast<std::size_t>(squid_frame_event::split) + 1 == SQUID_FRAME_EVENT_COUNT,
     "SQUID_FRAME_EVENT_COUNT must equal the number of squid_frame_event values");
 constexpr bool squid_sound_rules_cover_events()
 {
@@ -183,7 +185,7 @@ public:
         if (std::isfinite(target.x_deg) && std::isfinite(target.z_deg)) {
             target_tilt_ = target;
         }
-        note(sound_changes(phase_before, happened));
+        note(sound_changes(phase_before, stepped, happened));
         if (happened[static_cast<std::size_t>(squid_frame_event::start)]) {
             note(log_config(sensor_));
         }
@@ -265,11 +267,14 @@ private:
     }
 
     // Round events by comparison with the frame's start. Start is only the ready -> play entry: a resume from pause
-    // is not a start. Then the frame's sound is played.
-    int sound_changes(squid_phase phase_before, squid_frame_flags &happened)
+    // is not a start. A split is a stepped frame with a split count, however many splits it holds: one sound per frame.
+    // A step refused for its dt keeps last frame's counts, so only a stepped frame can carry a split.
+    // Then the frame's sound is played.
+    int sound_changes(squid_phase phase_before, bool stepped, squid_frame_flags &happened)
     {
         happened[static_cast<std::size_t>(squid_frame_event::start)] =
             phase_before == squid_phase::ready && game_.phase == squid_phase::play;
+        happened[static_cast<std::size_t>(squid_frame_event::split)] = stepped && game_.events.splits > 0;
         return play(happened);
     }
 
