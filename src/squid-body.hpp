@@ -1,7 +1,8 @@
 #pragma once
 
 // Ball body of the squid game: the body struct, the size table and the pair outcome
-// table. Refusals are logged here; the physics step reads position, velocity and mass, never the display rotation.
+// table. Refusals are logged here; the physics step reads position, velocity and mass for motion, never the display
+// rotation, spin or hover.
 
 #include <algorithm>
 #include <cmath>
@@ -60,6 +61,11 @@ struct squid_body {
     rv_pdklib::rv_vec4 rot = SQUID_IDENTITY_QUAT;
     // Random acceleration per axis in units/s^2, advanced by the physics step; zero at birth.
     squid_flat drift{};
+    // Spin in rad/s in the tilt root's frame (x, z on the disc plane, y up); the physics step turns rot by it and decays it.
+    rv_pdklib::rv_vec3 spin{};
+    // Hover phase in rad and its period in s; the physics step advances the phase, the view reads it.
+    float hover_phase = 0;
+    float hover_period = SQUID_HOVER_PERIOD_MIN_S;
 };
 
 // Outcome of a touching pair: which bodies split, and which one is absorbed. Every touching pair that is not an

@@ -1,7 +1,8 @@
 #pragma once
 
 // Physics of the flat disc: gravity from the game tilt, damping, speed cap, substeps, edge bounce, ball-ball bounce,
-// split and absorb. The caller owns the body set and the frame clock; refusals are logged.
+// split and absorb, and the display spin and hover phase that the contacts and substeps feed. The caller owns the
+// body set and the frame clock; refusals are logged.
 
 #include <cmath>
 #include <numbers>
@@ -107,12 +108,14 @@ inline void squid_body_move(squid_body &b, squid_flat accel, float h, float damp
 }
 
 // Keeps a ball inside the disc, |pos| + r <= SQUID_DISC_RADIUS: it goes back onto the edge, and an outward normal
-// speed reflects with SQUID_RIM_RESTITUTION. The edge never splits or changes the body.
+// speed reflects with SQUID_RIM_RESTITUTION and adds spin about y. The edge never splits, and never changes the body's
+// mass or size.
 // Called only after squid_substep's size check, so the radius is valid.
 inline void squid_edge_step(squid_body &b)
 {
     const float dist = std::sqrt(b.pos.x * b.pos.x + b.pos.z * b.pos.z);
-    const float limit = SQUID_DISC_RADIUS - squid_radius_checked(b);
+    const float radius = squid_radius_checked(b);
+    const float limit = SQUID_DISC_RADIUS - radius;
     if (dist <= limit) {
         return;
     }
@@ -123,6 +126,11 @@ inline void squid_edge_step(squid_body &b)
     if (vn <= 0.0f) {
         return;
     }
+    // Tangential speed along t = (-nz, nx). The contact at +n * r slips at vt - spin * r; the kick removes that slip, so a
+    // ball resting on the rim stops spinning up.
+    const float vt = b.vel.z * nx - b.vel.x * nz;
+    const float slip = vt - b.spin.y * radius;
+    b.spin.y += SQUID_SPIN_IMPACT_GAIN * slip / radius;
     const float k = (1.0f + SQUID_RIM_RESTITUTION) * vn;
     b.vel = squid_flat{ b.vel.x - k * nx, b.vel.z - k * nz };
 }
@@ -148,7 +156,9 @@ inline int squid_split_body(squid_bodies &set, int i, squid_flat normal)
     const float m = static_cast<float>(parent.mass);
     const float m_lo = static_cast<float>(mass_lo);
     const float m_hi = static_cast<float>(mass_hi);
-    const float sum_r = SQUID_BALL_RADIUS[size_lo - 1] + SQUID_BALL_RADIUS[size_hi - 1];
+    const float r_lo = SQUID_BALL_RADIUS[size_lo - 1];
+    const float r_hi = SQUID_BALL_RADIUS[size_hi - 1];
+    const float sum_r = r_lo + r_hi;
     // Distances from the centre of mass: m_lo * d_lo = m_hi * d_hi, so the centre of mass stays on the parent.
     const float d_lo = sum_r * m_hi / m;
     const float d_hi = sum_r * m_lo / m;
@@ -163,9 +173,15 @@ inline int squid_split_body(squid_bodies &set, int i, squid_flat normal)
     hi.variant = (parent.variant + 1) % SQUID_MODEL_VARIANTS;
     hi.pos = squid_flat{ c.x + t.x * d_hi, c.z + t.z * d_hi };
     hi.vel = squid_flat{ v.x + t.x * w_hi, v.z + t.z * w_hi };
+    // Both halves start from the parent's spin; the hi half takes +sep / r and the lo half -sep / r about y (a choice of
+    // the split, not of the contact rule).
+    hi.spin.y += SQUID_SPLIT_SEPARATION_SPEED / r_hi;
+    // The hi half bobs half a period behind the lo half; both keep the parent's period.
+    hi.hover_phase = std::fmod(parent.hover_phase + std::numbers::pi_v<float>, 2.0f * std::numbers::pi_v<float>);
     parent.mass = mass_lo;
     parent.pos = squid_flat{ c.x - t.x * d_lo, c.z - t.z * d_lo };
     parent.vel = squid_flat{ v.x - t.x * w_lo, v.z - t.z * w_lo };
+    parent.spin.y -= SQUID_SPLIT_SEPARATION_SPEED / r_lo;
     set.items[set.count++] = hi;
     return RV_OK;
 }
@@ -204,7 +220,9 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
             const float dx = b.pos.x - a.pos.x;
             const float dz = b.pos.z - a.pos.z;
             const float dist = std::sqrt(dx * dx + dz * dz);
-            const float reach = squid_radius_checked(a) + squid_radius_checked(b);
+            const float ra = squid_radius_checked(a);
+            const float rb = squid_radius_checked(b);
+            const float reach = ra + rb;
             if (dist >= reach) {
                 continue;
             }
@@ -236,6 +254,12 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
             if (!approaching) {
                 continue;
             }
+            // The slide turns into rolling: a and b share one constraint, the slip at the contact. Each spin takes half of
+            // the kick that removes it (gain 1), so both keep the same sense about y.
+            const float slide = (b.vel.z - a.vel.z) * nx - (b.vel.x - a.vel.x) * nz;
+            const float slip = -slide - a.spin.y * ra - b.spin.y * rb;
+            a.spin.y += SQUID_SPIN_IMPACT_GAIN * slip / (2.0f * ra);
+            b.spin.y += SQUID_SPIN_IMPACT_GAIN * slip / (2.0f * rb);
             const float impulse = -(1.0f + SQUID_BALL_RESTITUTION) * vn / (1.0f / ma + 1.0f / mb);
             a.vel.x -= impulse / ma * nx;
             a.vel.z -= impulse / ma * nz;
@@ -270,9 +294,29 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
     set.count = kept;
 }
 
-// One substep of h seconds for every body: move, pairs, then the edge last, so no body ends outside the disc.
-// Count and sizes are checked first; a refusal logs its reason and moves nothing. Splits and absorbs add to counts.
-// Each body's drift advances here, in index order, from the generator rng.
+// Display spin and hover over h seconds: rot turns by spin * h (exact axis-angle step, renormalised), the spin decays
+// with SQUID_SPIN_DECAY_S, and the hover phase advances by 2 pi h / period. Motion never reads these.
+inline void squid_motion_step(squid_body &b, float h)
+{
+    const float rate = std::sqrt(b.spin.x * b.spin.x + b.spin.y * b.spin.y + b.spin.z * b.spin.z);
+    const float angle = rate * h;
+    // Zero spin gives the identity turn: the axis scale is taken as zero, not divided by zero.
+    const float scale = rate > 0.0f ? std::sin(angle / 2.0f) / rate : 0.0f;
+    const rv_pdklib::rv_vec4 turn{ b.spin.x * scale, b.spin.y * scale, b.spin.z * scale, std::cos(angle / 2.0f) };
+    const rv_pdklib::rv_vec4 turned = squid_quat_mul(turn, b.rot);
+    const float norm = std::sqrt(turned.x * turned.x + turned.y * turned.y + turned.z * turned.z + turned.w * turned.w);
+    b.rot = rv_pdklib::rv_vec4{ turned.x / norm, turned.y / norm, turned.z / norm, turned.w / norm };
+    const float decay = std::exp(-h / SQUID_SPIN_DECAY_S);
+    b.spin.x *= decay;
+    b.spin.y *= decay;
+    b.spin.z *= decay;
+    const float full_turn = 2.0f * std::numbers::pi_v<float>;
+    b.hover_phase = std::fmod(b.hover_phase + full_turn * h / b.hover_period, full_turn);
+}
+
+// One substep of h seconds for every body: move, pairs, then the edge and the spin and hover last, so no body ends
+// outside the disc. Count and sizes are checked first; a refusal logs its reason and moves nothing. Splits and absorbs
+// add to counts. Each body's drift advances here, in index order, from the generator rng.
 inline int squid_substep(squid_bodies &set, squid_flat accel, float h, squid_event_counts &counts, std::minstd_rand &rng)
 {
     const bool count_bad = set.count < 0 || set.count > SQUID_BODY_CAPACITY;
@@ -295,6 +339,7 @@ inline int squid_substep(squid_bodies &set, squid_flat accel, float h, squid_eve
     squid_pair_step(set, counts);
     for (int i = 0; i < set.count; ++i) {
         squid_edge_step(set.items[i]);
+        squid_motion_step(set.items[i], h);
     }
     return RV_OK;
 }

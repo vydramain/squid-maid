@@ -70,6 +70,25 @@ constexpr float SQUID_DRIFT_SIGMA = 0.35f;
 // Memory time of the drift in seconds: a push fades over about 1.5 s, so the motion is smooth, not jerky.
 constexpr float SQUID_DRIFT_TAU_S = 1.5f;
 
+// Birth spin of every body: magnitude uniform in these bounds, in deg/s, about a uniformly random axis. Slow enough to read
+// as a turn, fast enough that the rim shows it.
+constexpr float SQUID_SPIN_MIN_DEG_S = 20.0f;
+constexpr float SQUID_SPIN_MAX_DEG_S = 90.0f;
+
+// Spin decay time in seconds: exp(-t / 10 s), so a body keeps about 37 percent of its spin after 10 s without contact.
+constexpr float SQUID_SPIN_DECAY_S = 10.0f;
+
+// Spin per unit of tangential speed over the radius (1 / s) that a contact adds about y: gain 1, as if the slide
+// turned into rolling.
+constexpr float SQUID_SPIN_IMPACT_GAIN = 1.0f;
+
+// Top of the hover bob in world units, so the view's height stays in 0..SQUID_HOVER_MAX; the physics does not read it.
+constexpr float SQUID_HOVER_MAX = 0.4f;
+
+// Hover period in seconds, uniform in these bounds at birth: a slow bob, not a jitter.
+constexpr float SQUID_HOVER_PERIOD_MIN_S = 3.0f;
+constexpr float SQUID_HOVER_PERIOD_MAX_S = 6.0f;
+
 // Speed cap in units/s; 8 is below the ~8.05 run across the whole disc without damping at this gravity, so it caps
 // that run and bounds the tunnelling check.
 constexpr float SQUID_SPEED_MAX = 8.0f;

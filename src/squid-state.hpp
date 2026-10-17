@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <numbers>
 #include <random>
 
 #include "squid-input.hpp"
@@ -198,6 +199,31 @@ inline int squid_layout_build(squid_bodies &out)
     return RV_OK;
 }
 
+// Uniform in [lo, hi) from the generator: one draw. The float cast can round up to hi, so the result is kept below it.
+inline float squid_uniform(std::minstd_rand &rng, float lo, float hi)
+{
+    const double span = static_cast<double>(rng.max()) - static_cast<double>(rng.min()) + 1.0;
+    const double u = static_cast<double>(rng() - rng.min()) / span;
+    const float x = lo + (hi - lo) * static_cast<float>(u);
+    return x < hi ? x : std::nextafter(hi, lo);
+}
+
+// Birth spin and hover of every body in index order, from the round's drift generator: a spin magnitude, a uniform
+// axis (height uniform in -1..1, azimuth uniform), a hover period and a hover phase; five draws per body.
+inline void squid_motion_birth(squid_bodies &set, std::minstd_rand &rng)
+{
+    for (int i = 0; i < set.count; ++i) {
+        squid_body &b = set.items[i];
+        const float rate = squid_uniform(rng, SQUID_SPIN_MIN_DEG_S, SQUID_SPIN_MAX_DEG_S) * SQUID_DEG_TO_RAD;
+        const float height = squid_uniform(rng, -1.0f, 1.0f);
+        const float azimuth = squid_uniform(rng, 0.0f, 2.0f * std::numbers::pi_v<float>);
+        const float ring = std::sqrt(1.0f - height * height);
+        b.spin = rv_pdklib::rv_vec3{ rate * ring * std::cos(azimuth), rate * height, rate * ring * std::sin(azimuth) };
+        b.hover_period = squid_uniform(rng, SQUID_HOVER_PERIOD_MIN_S, SQUID_HOVER_PERIOD_MAX_S);
+        b.hover_phase = squid_uniform(rng, 0.0f, 2.0f * std::numbers::pi_v<float>);
+    }
+}
+
 // Builds the start layout of a fresh game; the game starts in prepare.
 inline int squid_game_init(squid_game &g)
 {
@@ -206,6 +232,7 @@ inline int squid_game_init(squid_game &g)
         return layout;
     }
     g.drift_rng.seed(SQUID_LAYOUT_SEED);
+    squid_motion_birth(g.bodies, g.drift_rng);
     g.phase = squid_phase::prepare;
     return RV_OK;
 }
@@ -237,6 +264,7 @@ inline int squid_game_restart(squid_game &g)
         return layout;
     }
     g.drift_rng.seed(SQUID_LAYOUT_SEED);
+    squid_motion_birth(g.bodies, g.drift_rng);
     g.events = squid_event_counts{};
     squid_input_level(g.input);
     g.input.smoothed = squid_tilt{};
