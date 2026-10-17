@@ -126,7 +126,8 @@ static_assert(squid_event_table_in_order(), "SQUID_EVENT_EDGES needs one row per
 struct squid_game {
     squid_phase phase = squid_phase::prepare;
     squid_input input{};
-    // The body set stepped in play, and the splits and absorbs of the last play frame.
+    // The body set stepped in play, and the splits and absorbs of the current frame; zero on frames that do not step
+    // the physics (prepare, ready, pause, pad loss, a frame the physics refused); a step refused for its dt changes nothing.
     squid_bodies bodies{};
     squid_event_counts events{};
     // Target sequence, orbit and debris touches: no longer advanced by the machine; kept as data until the round tasks

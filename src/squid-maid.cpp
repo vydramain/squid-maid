@@ -1,12 +1,10 @@
-// squid-maid entry point: the game state machine driven by the front buttons, its sounds, the scene of the orbit and
-// the debug view (docs/disdoc.md, 6, 7, 9, 11, 15.1, 15.2).
+// squid-maid entry point: the ball toy's state machine driven by the front buttons, its sounds, its scene and the
+// debug view.
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <format>
-#include <string>
 
 #include "pdk/cg/rv_cg.h"
 #include "pdk/cio/rv_cio.h"
@@ -52,8 +50,6 @@ struct squid_button_row {
 constexpr auto SQUID_BUTTON_ROWS = std::to_array<squid_button_row>({
     { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::prepare, squid_command::calibrate },
     { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::ready, squid_command::start },
-    { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::prepare, squid_command::free_mode },
-    { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::ready, squid_command::free_mode },
     { RV_ISOURCE_FRONT_BTTN_NORTH, squid_phase::ready, squid_command::calibrate },
     { RV_ISOURCE_FRONT_BTTN_NORTH, squid_phase::pause, squid_command::calibrate },
     { RV_ISOURCE_BUMPER_RIGHT, squid_phase::play, squid_command::pause },
@@ -74,15 +70,14 @@ const squid_button_row *button_row(uint64_t pressed, squid_phase phase)
     return it == SQUID_BUTTON_ROWS.end() ? nullptr : &*it;
 }
 
-// Events of one frame that may carry a sound: a press's calibration, a new hit, the entry into play, the end.
+// Events of one frame that may carry a sound: a press's calibration, the entry into play, the end.
 enum class squid_frame_event : int {
     calibrate = 0,
-    hit = 1,
-    start = 2,
-    finish = 3,
+    start = 1,
+    finish = 2,
 };
 // Count of the enum above; the flags are indexed by it.
-constexpr std::size_t SQUID_FRAME_EVENT_COUNT = 4;
+constexpr std::size_t SQUID_FRAME_EVENT_COUNT = 3;
 using squid_frame_flags = std::array<bool, SQUID_FRAME_EVENT_COUNT>;
 
 struct squid_sound_rule {
@@ -94,7 +89,6 @@ struct squid_sound_rule {
 constexpr auto SQUID_SOUND_RULES = std::to_array<squid_sound_rule>({
     { squid_frame_event::finish, squid_sound_event::finish },
     { squid_frame_event::start, squid_sound_event::start },
-    { squid_frame_event::hit, squid_sound_event::hit },
     { squid_frame_event::calibrate, squid_sound_event::calibrate },
 });
 
@@ -138,10 +132,10 @@ public:
             return base_result;
         }
         if (rv_pdko_cg(pdk_) == nullptr) {
-            RV_LOG_ERR(SQUID_MAID_TAG, "no geometry controller: the orbit cannot be drawn");
+            RV_LOG_ERR(SQUID_MAID_TAG, "no geometry controller: the camera cannot be set");
             return RV_ERR_INVAL;
         }
-        // The machine logs the cause; without its targets there is no round to play.
+        // The machine logs the cause; without the start layout there is no round to play.
         const int game_code = squid_game_init(game_);
         if (game_code != RV_OK) {
             return game_code;
@@ -152,10 +146,10 @@ public:
         const int scene_code = squid_scene_load(world_, rv_pdko_cd(pdk_), scene_);
         note(scene_code);
         scene_ready_ = scene_code == RV_OK;
-        // The loader logs the cause; without a font the view draws the orbit but no text.
+        // The loader logs the cause; without a font the view draws no text.
         font_ready_ = squid_draw_font_load(rv_pdko_cv(pdk_), addr_font_, addr_palette_) == RV_OK;
         const uint64_t abilities = rv_cio_iport_abilities(rv_pdko_cio(pdk_), 0);
-        log_config((abilities & RV_ISOURCE_GYRO_MOVE) != 0);
+        note(log_config((abilities & RV_ISOURCE_GYRO_MOVE) != 0));
         return RV_OK;
     }
 
@@ -170,9 +164,8 @@ public:
         pad_buttons_ = state.buttons;
         sensor_ = (abilities & RV_ISOURCE_GYRO_MOVE) != 0;
 
-        // Sounds compare the phase and hits with their values before this frame's press and step.
+        // Sounds compare the phase with its value before this frame's press and step.
         const squid_phase phase_before = game_.phase;
-        const int hits_before = game_.sequence.hits;
         squid_frame_flags happened{};
         // The debug panel's switch: each press of the left bumper flips it; it starts off.
         const bool bumper = (pressed & RV_ISOURCE_BUMPER_LEFT) != 0;
@@ -184,12 +177,11 @@ public:
         if (std::isfinite(target.x_deg) && std::isfinite(target.z_deg)) {
             target_tilt_ = target;
         }
-        note(sound_changes(phase_before, hits_before, happened));
+        note(sound_changes(phase_before, happened));
         if (happened[static_cast<std::size_t>(squid_frame_event::start)]) {
-            log_config(sensor_);
+            note(log_config(sensor_));
         }
         note(squid_orbit_tilt(game_.input.smoothed.x_deg, game_.input.smoothed.z_deg, rotation_));
-        trail_update();
         if (scene_ready_) {
             note(squid_scene_pose(world_, scene_, rotation_, game_.orbit));
         }
@@ -263,9 +255,8 @@ private:
 
     // Round events by comparison with the frame's start. Start is only the ready -> play entry: a resume from pause
     // is not a start. Then the frame's sound is played.
-    int sound_changes(squid_phase phase_before, int hits_before, squid_frame_flags &happened)
+    int sound_changes(squid_phase phase_before, squid_frame_flags &happened)
     {
-        happened[static_cast<std::size_t>(squid_frame_event::hit)] = game_.sequence.hits > hits_before;
         happened[static_cast<std::size_t>(squid_frame_event::start)] =
             phase_before == squid_phase::ready && game_.phase == squid_phase::play;
         happened[static_cast<std::size_t>(squid_frame_event::finish)] =
@@ -283,46 +274,19 @@ private:
         return squid_sound_play(pdk_, sound_, rule->sound);
     }
 
-    // One trail sample per frame in play, the world position of Alkoldun. Pause keeps the samples: the orbit stands still,
-    // so the trail does not stretch when play resumes. Prepare and ready clear them: restart resets the orbit to its start.
-    void trail_update()
-    {
-        if (game_.phase == squid_phase::prepare || game_.phase == squid_phase::ready) {
-            trail_count_ = 0;
-            trail_head_ = 0;
-            return;
-        }
-        if (game_.phase != squid_phase::play) {
-            return;
-        }
-        trail_ring_[static_cast<std::size_t>(trail_head_)] = squid_orbit_position(game_.orbit, rotation_);
-        trail_head_ = (trail_head_ + 1) % SQUID_TRAIL_POINTS;
-        trail_count_ = std::min(trail_count_ + 1, SQUID_TRAIL_POINTS);
-    }
-
-    // Copies the trail oldest sample first into samples; returns how many it holds. The newest sits before the head.
-    int trail_snapshot(squid_trail_samples &samples) const
-    {
-        for (int k = 0; k < trail_count_; ++k) {
-            const int index = (trail_head_ - trail_count_ + k + SQUID_TRAIL_POINTS) % SQUID_TRAIL_POINTS;
-            samples[static_cast<std::size_t>(k)] = trail_ring_[static_cast<std::size_t>(index)];
-        }
-        return trail_count_;
-    }
-
     void log_state()
     {
         RV_LOG_INFO(SQUID_MAID_TAG,
-            "frame {} phase {} source {} tilt x {:+.2f} z {:+.2f} orbit {:.4f} turn, "
-            "hits {} of {}, time {:.2f} s, refusals {} last rv_err {}",
+            "frame {} phase {} source {} tilt x {:+.2f} z {:+.2f} bodies {}, splits {} absorbs {}, "
+            "time {:.2f} s, refusals {} last rv_err {}",
             frame_index_,
             SQUID_PHASE_NAMES[static_cast<std::size_t>(game_.phase)],
             sensor_ ? "sensor" : "reserve",
             game_.input.smoothed.x_deg,
             game_.input.smoothed.z_deg,
-            game_.orbit.phase_rad / SQUID_ORBIT_TAU_RAD,
-            game_.sequence.hits,
-            SQUID_TARGET_COUNT,
+            game_.bodies.count,
+            game_.events.splits,
+            game_.events.absorbs,
             game_.time_s,
             refusals_,
             last_refusal_);
@@ -355,27 +319,28 @@ private:
             SQUID_DEBRIS_RADIUS };
     }
 
-    // Scene parameters, target order and input source: what a report needs to reproduce a round (disdoc 12).
-    void log_config(bool sensor) const
+    // Input parameters, input source and the start layout: what a report needs to reproduce a round.
+    int log_config(bool sensor) const
     {
         RV_LOG_INFO(SQUID_MAID_TAG,
-            "scene: orbit radius {:.2f}, period {:.1f} s, radii alkoldun {:.2f} debris {:.2f}, tilt limit {:.0f} deg, "
-            "full input at {:.0f} deg, dead zone {:.0f} deg, smoothing {:.2f} s, source {}",
-            SQUID_ORBIT_RADIUS,
-            SQUID_ORBIT_PERIOD_S,
-            SQUID_ALKOLDUN_RADIUS,
-            SQUID_DEBRIS_RADIUS,
+            "input: tilt limit {:.0f} deg, full input at {:.0f} deg, dead zone {:.0f} deg, smoothing {:.2f} s, source {}",
             SQUID_TILT_LIMIT_DEG,
             SQUID_FULL_INPUT_TILT_DEG,
             SQUID_DEAD_ZONE_DEG,
             SQUID_SMOOTHING_S,
             sensor ? "sensor" : "reserve");
-        std::string order;
-        for (const squid_target_pair &pair : SQUID_TARGET_PAIRS) {
-            order +=
-                std::format(" {:+.0f}/{:+.0f}@{:.3f}", pair.tilt_x_deg, pair.tilt_z_deg, pair.phase_rad / SQUID_ORBIT_TAU_RAD);
+        // Rebuilt from the seed, not read from game_.bodies: the set is stepped by the time a start is logged.
+        squid_bodies start{};
+        const int built = squid_layout_build(start);
+        if (built != RV_OK) {
+            return built;
         }
-        RV_LOG_INFO(SQUID_MAID_TAG, "targets (tilt x/z deg @ orbit turn):{}", order);
+        int total_mass = 0;
+        for (int i = 0; i < start.count; ++i) {
+            total_mass += start.items[i].mass;
+        }
+        RV_LOG_INFO(SQUID_MAID_TAG, "start layout: {} bodies, total mass {}", start.count, total_mass);
+        return RV_OK;
     }
 
     // The scene's models, in the ECS frame; the debug view is drawn over them.
@@ -398,16 +363,6 @@ private:
         draw_step("camera", camera_code);
         if (camera_code != RV_OK) {
             return;
-        }
-        draw_step("orbit", squid_draw_ring(cg, cv, rotation_));
-        squid_trail_samples samples{};
-        const int trail_count = trail_snapshot(samples);
-        draw_step("trail", squid_draw_trail(cg, cv, samples, trail_count));
-        draw_step("cross", squid_draw_cross(cg, cv));
-        // Free mode has no active target; the sequence's active index is SQUID_SEQUENCE_NONE once the round is over.
-        if (!game_.free_mode && game_.sequence.active != SQUID_SEQUENCE_NONE && game_.sequence.active < SQUID_TARGET_COUNT) {
-            const rv_pdklib::rv_vec3 target = game_.targets[static_cast<std::size_t>(game_.sequence.active)].position;
-            draw_step("target", squid_draw_target(cg, cv, target, game_.time_s));
         }
         if (font_ready_) {
             draw_step("hud", squid_hud_draw(cv, font_style(), hud_round(), hud_debug(), debug_panel_));
@@ -448,10 +403,6 @@ private:
     squid_tilt target_tilt_{};
     // Left bumper toggles the debug panel; off at start.
     bool debug_panel_ = false;
-    // Alkoldun's trail: a ring of world positions; trail_head_ is the next write, trail_count_ the samples held.
-    squid_trail_samples trail_ring_{};
-    int trail_head_ = 0;
-    int trail_count_ = 0;
     rv_pdklib::ecs_world world_;
     squid_scene_objects scene_;
     bool scene_ready_ = false;
