@@ -1,7 +1,7 @@
 #pragma once
 
-// Physics of the flat disc: gravity from the game tilt, damping, speed cap, substeps, edge bounce and ball-ball bounce.
-// The caller owns the body set and the frame clock; refusals are logged.
+// Physics of the flat disc: gravity from the game tilt, damping, speed cap, substeps, edge bounce, ball-ball bounce,
+// split and absorb. The caller owns the body set and the frame clock; refusals are logged.
 
 #include <cmath>
 #include <numbers>
@@ -39,6 +39,20 @@ struct squid_bodies {
     int count = 0;
 };
 
+// Splits and absorbs, counted over a pass, a substep or a frame; the main loop plays a sound per split.
+struct squid_event_counts {
+    int splits = 0;
+    int absorbs = 0;
+};
+
+// A touching approaching pair with a split or an absorb, recorded in the pair pass and applied after its loops.
+struct squid_pair_event {
+    int i = 0;
+    int j = 0;
+    squid_pair_outcome out{};
+    squid_flat normal{};
+};
+
 // Acceleration of the disc from the game tilt: the x and z components of the world down vector in the tilted disc's
 // axes, for R = Rx(tx) * Rz(tz) (rv_scene_local_trs with no yaw), times SQUID_GRAVITY. Zero tilt gives exactly zero.
 inline squid_flat squid_gravity(squid_tilt tilt)
@@ -48,8 +62,8 @@ inline squid_flat squid_gravity(squid_tilt tilt)
     return squid_flat{ -SQUID_GRAVITY * std::sin(tz) * std::cos(tx), SQUID_GRAVITY * std::sin(tx) };
 }
 
-// Radius of a body whose size squid_substep checked in the same substep; call it only after that check. Split and
-// absorb (next task) change masses only after the pair loops, and only within SQUID_BALL_MASS_MIN..SQUID_BALL_MASS_MAX.
+// Radius of a body whose size squid_substep checked in the same substep; call it only after that check. Masses stay in
+// SQUID_BALL_MASS_MIN..SQUID_BALL_MASS_MAX through split and absorb, so the check holds in every substep.
 inline float squid_radius_checked(const squid_body &b)
 {
     float radius = 0;
@@ -74,6 +88,7 @@ inline void squid_body_move(squid_body &b, squid_flat accel, float h, float damp
 
 // Keeps a ball inside the disc, |pos| + r <= SQUID_DISC_RADIUS: it goes back onto the edge, and an outward normal
 // speed reflects with SQUID_RIM_RESTITUTION. The edge never splits or changes the body.
+// Called only after squid_substep's size check, so the radius is valid.
 inline void squid_edge_step(squid_body &b)
 {
     const float dist = std::sqrt(b.pos.x * b.pos.x + b.pos.z * b.pos.z);
@@ -92,11 +107,76 @@ inline void squid_edge_step(squid_body &b)
     b.vel = squid_flat{ b.vel.x - k * nx, b.vel.z - k * nz };
 }
 
+// Split of a ball in place: floor(m/2) keeps slot i and ceil(m/2) is appended. The halves touch along the tangent of the
+// contact, keep the centre of mass, and move apart at SQUID_SPLIT_SEPARATION_SPEED shared inversely to mass, so the
+// momentum of the parent is kept. Skipped with a warning at capacity: unreachable in practice (at 84 bodies all masses
+// are 1 and no size-1 pair splits), kept as a guard. An Alkoldun never gets here (its rows never split).
+inline int squid_split_body(squid_bodies &set, int i, squid_flat normal)
+{
+    if (set.count >= SQUID_BODY_CAPACITY) {
+        RV_LOG_WARN(SQUID_PHYSICS_TAG, "split skipped: the set is at capacity {}", SQUID_BODY_CAPACITY);
+        return RV_ERR_NOMEM;
+    }
+    squid_body &parent = set.items[i];
+    const int mass_lo = parent.mass / 2;
+    const int mass_hi = parent.mass - mass_lo;
+    int size_lo = 0;
+    int size_hi = 0;
+    if (squid_size_of_mass(mass_lo, size_lo) != RV_OK || squid_size_of_mass(mass_hi, size_hi) != RV_OK) {
+        return RV_ERR_INVAL;
+    }
+    const float m = static_cast<float>(parent.mass);
+    const float m_lo = static_cast<float>(mass_lo);
+    const float m_hi = static_cast<float>(mass_hi);
+    const float sum_r = SQUID_BALL_RADIUS[size_lo - 1] + SQUID_BALL_RADIUS[size_hi - 1];
+    // Distances from the centre of mass: m_lo * d_lo = m_hi * d_hi, so the centre of mass stays on the parent.
+    const float d_lo = sum_r * m_hi / m;
+    const float d_hi = sum_r * m_lo / m;
+    // Relative tangential speed is SQUID_SPLIT_SEPARATION_SPEED; the speed offsets are inverse to the masses.
+    const float w_lo = SQUID_SPLIT_SEPARATION_SPEED * m_hi / m;
+    const float w_hi = SQUID_SPLIT_SEPARATION_SPEED * m_lo / m;
+    const squid_flat t{ -normal.z, normal.x };
+    const squid_flat c = parent.pos;
+    const squid_flat v = parent.vel;
+    squid_body hi = parent;
+    hi.mass = mass_hi;
+    hi.variant = (parent.variant + 1) % SQUID_MODEL_VARIANTS;
+    hi.pos = squid_flat{ c.x + t.x * d_hi, c.z + t.z * d_hi };
+    hi.vel = squid_flat{ v.x + t.x * w_hi, v.z + t.z * w_hi };
+    parent.mass = mass_lo;
+    parent.pos = squid_flat{ c.x - t.x * d_lo, c.z - t.z * d_lo };
+    parent.vel = squid_flat{ v.x - t.x * w_lo, v.z - t.z * w_lo };
+    set.items[set.count++] = hi;
+    return RV_OK;
+}
+
+// Absorb: the kept body takes the gone body's mass and the centre-of-mass velocity of the pair; its position stays.
+// The caller removes the gone body. The pair table keeps the mass within SQUID_BALL_MASS_MAX: only size-1 bodies (mass 1)
+// are absorbed, and only into sizes 1..3 (masses up to 7).
+inline void squid_absorb_body(squid_bodies &set, int keep, int gone)
+{
+    squid_body &k = set.items[keep];
+    const squid_body &g = set.items[gone];
+    const float mk = static_cast<float>(k.mass);
+    const float mg = static_cast<float>(g.mass);
+    const float total = mk + mg;
+    k.vel = squid_flat{ (mk * k.vel.x + mg * g.vel.x) / total, (mk * k.vel.z + mg * g.vel.z) / total };
+    k.mass += g.mass;
+}
+
 // Ball-ball contact over all pairs (O(n^2), n <= SQUID_BODY_CAPACITY). A touching pair is separated along the normal
 // in inverse proportion to mass and, if approaching, bounces with SQUID_BALL_RESTITUTION; momentum is conserved.
-// Split and absorb extend this function: they need the normal relative speed vn, computed here before the impulse.
-inline void squid_pair_step(squid_bodies &set)
+// An approaching pair whose outcome splits or absorbs is recorded here and applied after the loops, so indices do not
+// shift inside them; an absorbing pair is neither separated nor bounced. A body takes part in one event per pass, the first in
+// i/j order; later events with it are dropped and the pair bounces. Called only after squid_substep's size check, so every body
+// has a radius.
+inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
 {
+    bool taken[SQUID_BODY_CAPACITY] = {};
+    bool removed[SQUID_BODY_CAPACITY] = {};
+    // Two bodies per event and one event per body per pass: capacity / 2 events always fit.
+    squid_pair_event events[SQUID_BODY_CAPACITY / 2]{};
+    int event_count = 0;
     for (int i = 0; i < set.count; ++i) {
         for (int j = i + 1; j < set.count; ++j) {
             squid_body &a = set.items[i];
@@ -113,13 +193,27 @@ inline void squid_pair_step(squid_bodies &set)
             const float nz = coincident ? 0.0f : dz / dist;
             const float ma = static_cast<float>(a.mass);
             const float mb = static_cast<float>(b.mass);
+            const float vn = (b.vel.x - a.vel.x) * nx + (b.vel.z - a.vel.z) * nz;
+            const bool approaching = vn < 0.0f;
+            squid_pair_outcome out{};
+            const bool resolved = approaching && squid_pair_resolve(a, b, -vn, out) == RV_OK;
+            const bool free_pair = !taken[i] && !taken[j];
+            const bool has_event = resolved && free_pair && (out.split_a || out.split_b || out.a_absorbed || out.b_absorbed);
+            if (has_event) {
+                events[event_count++] = squid_pair_event{ i, j, out, squid_flat{ nx, nz } };
+                taken[i] = true;
+                taken[j] = true;
+            }
+            const bool absorbed = has_event && (out.a_absorbed || out.b_absorbed);
+            if (absorbed) {
+                continue;
+            }
             const float push = reach - dist;
             a.pos.x -= nx * push * mb / (ma + mb);
             a.pos.z -= nz * push * mb / (ma + mb);
             b.pos.x += nx * push * ma / (ma + mb);
             b.pos.z += nz * push * ma / (ma + mb);
-            const float vn = (b.vel.x - a.vel.x) * nx + (b.vel.z - a.vel.z) * nz;
-            if (vn >= 0.0f) {
+            if (!approaching) {
                 continue;
             }
             const float impulse = -(1.0f + SQUID_BALL_RESTITUTION) * vn / (1.0f / ma + 1.0f / mb);
@@ -129,11 +223,36 @@ inline void squid_pair_step(squid_bodies &set)
             b.vel.z += impulse / mb * nz;
         }
     }
+    for (int k = 0; k < event_count; ++k) {
+        const squid_pair_event &e = events[k];
+        if (e.out.a_absorbed || e.out.b_absorbed) {
+            const int gone = e.out.a_absorbed ? e.i : e.j;
+            const int keep = e.out.a_absorbed ? e.j : e.i;
+            squid_absorb_body(set, keep, gone);
+            removed[gone] = true;
+            ++counts.absorbs;
+            continue;
+        }
+        if (e.out.split_a && squid_split_body(set, e.i, e.normal) == RV_OK) {
+            ++counts.splits;
+        }
+        if (e.out.split_b && squid_split_body(set, e.j, e.normal) == RV_OK) {
+            ++counts.splits;
+        }
+    }
+    // Stable compaction: the survivors keep their order, so a later pass pairs them the same way every run.
+    int kept = 0;
+    for (int k = 0; k < set.count; ++k) {
+        if (!removed[k]) {
+            set.items[kept++] = set.items[k];
+        }
+    }
+    set.count = kept;
 }
 
 // One substep of h seconds for every body: move, pairs, then the edge last, so no body ends outside the disc.
-// Count and sizes are checked first; a refusal logs its reason and moves nothing.
-inline int squid_substep(squid_bodies &set, squid_flat accel, float h)
+// Count and sizes are checked first; a refusal logs its reason and moves nothing. Splits and absorbs add to counts.
+inline int squid_substep(squid_bodies &set, squid_flat accel, float h, squid_event_counts &counts)
 {
     const bool count_bad = set.count < 0 || set.count > SQUID_BODY_CAPACITY;
     if (count_bad) {
@@ -151,18 +270,20 @@ inline int squid_substep(squid_bodies &set, squid_flat accel, float h)
     for (int i = 0; i < set.count; ++i) {
         squid_body_move(set.items[i], accel, h, damping);
     }
-    squid_pair_step(set);
+    squid_pair_step(set, counts);
     for (int i = 0; i < set.count; ++i) {
         squid_edge_step(set.items[i]);
     }
     return RV_OK;
 }
 
-// One frame of dt seconds as SQUID_SUBSTEPS substeps. Refused with state untouched on a non-positive or non-finite dt
-// or a non-finite tilt. A count or size refusal comes from the first substep, before any move: masses and count do not
-// change within a frame.
-inline int squid_physics_frame(squid_bodies &set, squid_tilt tilt, float dt)
+// One frame of dt seconds as SQUID_SUBSTEPS substeps; counts holds this frame's splits and absorbs. Refused with state
+// untouched on a non-positive or non-finite dt or a non-finite tilt. A count or size refusal comes from the first
+// substep, before any move. Later substeps cannot refuse: masses stay in 1..8 and their total is at most 84, which
+// bounds the count, so no refusal is reachable mid-frame.
+inline int squid_physics_frame(squid_bodies &set, squid_tilt tilt, float dt, squid_event_counts &counts)
 {
+    counts = squid_event_counts{};
     const bool dt_bad = !std::isfinite(dt) || dt <= 0.0f;
     if (dt_bad) {
         RV_LOG_ERR(SQUID_PHYSICS_TAG, "frame refused: dt {} is not a positive finite number", dt);
@@ -176,7 +297,7 @@ inline int squid_physics_frame(squid_bodies &set, squid_tilt tilt, float dt)
     const squid_flat accel = squid_gravity(tilt);
     const float h = dt / SQUID_SUBSTEPS;
     for (int step = 0; step < SQUID_SUBSTEPS; ++step) {
-        const int rc = squid_substep(set, accel, h);
+        const int rc = squid_substep(set, accel, h, counts);
         if (rc != RV_OK) {
             return rc;
         }
