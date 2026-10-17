@@ -56,11 +56,11 @@ constexpr auto SQUID_HUD_PHASE_LABELS = std::to_array<std::string_view>({
 });
 static_assert(SQUID_HUD_PHASE_LABELS.size() == SQUID_PHASE_COUNT, "SQUID_HUD_PHASE_LABELS needs one label per phase");
 
-// The lead line of the hint: the intro while preparing and ready, none in play and pause.
+// The lead line of the hint: what the player does now. None in pause.
 constexpr auto SQUID_HUD_PHASE_LEADS = std::to_array<std::string_view>({
-    SQUID_TEXT_INTRO,
-    SQUID_TEXT_INTRO,
-    std::string_view{},
+    SQUID_TEXT_LEAD_PREPARE,
+    SQUID_TEXT_LEAD_PREPARE,
+    SQUID_TEXT_LEAD_PLAY,
     std::string_view{},
 });
 static_assert(SQUID_HUD_PHASE_LEADS.size() == SQUID_PHASE_COUNT, "SQUID_HUD_PHASE_LEADS needs one lead per phase");
