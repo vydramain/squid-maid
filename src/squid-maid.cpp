@@ -1,4 +1,4 @@
-// squid-maid entry point: the debug view of the tilt input and the orbit (docs/disdoc.md, 15.1).
+// squid-maid entry point: the tilt input, the scene of the orbit and the debug view (docs/disdoc.md, 6, 15.1, 15.2).
 #include <cstdint>
 
 #include "pdk/cg/rv_cg.h"
@@ -8,12 +8,15 @@
 #include "pdk/rv_err.h"
 #include "pdk/rv_pdko.h"
 #include "pdklib/rv_cppdisc/rv_cppdisc.hpp"
+#include "pdklib/rv_ecs/rv_ecs.hpp"
+#include "pdklib/rv_ecs/rv_ecs_frame.hpp"
 #include "pdklib/rv_font/rv_font.hpp"
 #include "pdklib/rv_logs/rv_logs.hpp"
 #include "squid-draw.hpp"
 #include "squid-input.hpp"
 #include "squid-orbit.hpp"
 #include "squid-params.hpp"
+#include "squid-scene.hpp"
 
 namespace squid
 {
@@ -45,6 +48,10 @@ public:
             RV_LOG_ERR(SQUID_MAID_TAG, "no geometry controller: the orbit cannot be drawn");
             return RV_ERR_INVAL;
         }
+        // The loader logs the cause; without the scene the disc draws the debug view only.
+        const int scene_code = squid_scene_load(world_, rv_pdko_cd(pdk_), scene_);
+        note(scene_code);
+        scene_ready_ = scene_code == RV_OK;
         // The loader logs the cause; without a font the view draws the orbit but no text.
         font_ready_ = squid_draw_font_load(rv_pdko_cv(pdk_), addr_font_, addr_palette_) == RV_OK;
         return RV_OK;
@@ -70,9 +77,15 @@ public:
         note(squid_input_step(input_, state, abilities, dt));
         note(squid_orbit_step(orbit_, dt));
         note(squid_orbit_tilt(input_.smoothed.x_deg, input_.smoothed.z_deg, rotation_));
+        if (scene_ready_) {
+            note(squid_scene_pose(world_, scene_, rotation_, orbit_));
+        }
 
         if (frame_index_ % SQUID_LOG_PERIOD_FRAMES == 0) {
             log_state();
+            if (scene_ready_) {
+                note(squid_scene_log(world_, scene_));
+            }
         }
         ++frame_index_;
     }
@@ -80,6 +93,7 @@ public:
     void frame_render()
     {
         frame_begin(SQUID_DRAW_BACKGROUND);
+        draw_scene();
         draw_view();
         frame_end();
     }
@@ -144,11 +158,23 @@ private:
             last_refusal_);
     }
 
+    // The scene's models, in the ECS frame; the debug view is drawn over them.
+    void draw_scene()
+    {
+        if (!scene_ready_) {
+            return;
+        }
+        const int code = rv_pdklib::ecs_world_frame(world_, rv_pdklib::ecs_frame{ pdk_, frame_index_ });
+        draw_step("scene", code);
+    }
+
     void draw_view()
     {
         rv_cg *cg = rv_pdko_cg(pdk_);
         rv_cv *cv = rv_pdko_cv(pdk_);
-        const int camera_code = squid_draw_camera(cg);
+        rv_cg_camera camera{};
+        squid_scene_camera_make(camera);
+        const int camera_code = static_cast<int>(rv_cg_frame_camera(cg, &camera));
         draw_step("camera", camera_code);
         if (camera_code != RV_OK) {
             return;
@@ -186,6 +212,9 @@ private:
     squid_orbit orbit_;
     // The orbit's tilt, taken from the shown tilt each frame; kept when the conversion refuses.
     rv_pdklib::fx_vec3 rotation_{};
+    rv_pdklib::ecs_world world_;
+    squid_scene_objects scene_;
+    bool scene_ready_ = false;
     uint64_t pad_buttons_ = 0;
     bool sensor_ = false;
     int64_t frame_index_ = 0;

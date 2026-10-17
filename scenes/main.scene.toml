@@ -1,3 +1,52 @@
-# The one scene of the squid-maid prototype (docs/disdoc.md, section 14); empty until its objects are placed.
+# The scene of the squid-maid prototype (docs/disdoc.md, sections 6, 10, 15.2). The tilt root sits at the origin with
+# scale 1 and no parent; the disc writes its rotation each frame. Alkoldun's position is also written each frame.
+# Values are Q20.12 (4096 = 1.0). The debris position is set by code (the first target of squid_sequence_build),
+# so the position below is a placeholder.
+
 [scene]
 version = "1.1"
+
+[[object]]
+id = "7a500001"
+name = "tilt"
+parent = ""
+kind = "group"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = ""
+texture = ""
+
+[[object]]
+id = "7a500002"
+name = "earth"
+parent = "7a500001"
+kind = "mesh"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = "earth.gltf"
+texture = ""
+
+[[object]]
+id = "7a500003"
+name = "alkoldun"
+parent = "7a500001"
+kind = "mesh"
+position = [24576, 0, 0]
+rotation = [0, 0, 0]
+scale = [1024, 1024, 1024]
+mesh = "ball.gltf"
+texture = ""
+
+[[object]]
+id = "7a500004"
+name = "debris"
+parent = ""
+kind = "mesh"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1638, 1638, 1638]
+mesh = "ball.gltf"
+texture = ""
+tint = [128, 128, 128]
