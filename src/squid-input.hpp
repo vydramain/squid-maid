@@ -43,7 +43,7 @@ struct squid_input {
     rv_pdklib::rv_vec4 neutral{ 0, 0, 0, 1 };
     // Target tilt set by the reserve keys (D-pad); kept after release until level.
     squid_tilt keys{};
-    // The shown tilt; follows the target through the smoothing.
+    // The smoothed game tilt, which physics uses; follows the target through the smoothing.
     squid_tilt smoothed{};
 };
 
@@ -112,7 +112,7 @@ inline squid_tilt squid_input_pad_tilt(rv_pdklib::rv_vec4 neutral, rv_pdklib::rv
     return squid_tilt{ now.x_deg - base.x_deg, now.z_deg - base.z_deg };
 }
 
-// Takes the pad's current pose as neutral. The shown tilt is not touched; smoothing moves it to the new zero.
+// Takes the pad's current pose as neutral. The smoothed game tilt is not touched; smoothing moves it to the new zero.
 inline int squid_input_calibrate(squid_input &in, const rv_istate &state)
 {
     const rv_pdklib::rv_vec4 raw{ state.motion.quat_x, state.motion.quat_y, state.motion.quat_z, state.motion.quat_w };

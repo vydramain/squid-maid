@@ -306,7 +306,7 @@ private:
             last_refusal_);
     }
 
-    // The tilt the input asks for this frame; the shown tilt follows it smoothed.
+    // The tilt the input asks for this frame; the smoothed game tilt follows it.
     squid_tilt target_tilt(const rv_istate &state) const
     {
         if (sensor_) {
@@ -407,7 +407,7 @@ private:
     squid_sound sound_;
     // The tilt root's rotation, taken from the shown tilt each frame; kept when the conversion refuses.
     rv_pdklib::fx_vec3 rotation_{};
-    // The tilt the input asks for this frame, shown in the debug panel beside the shown tilt.
+    // The input's target tilt; the debug panel shows it beside the smoothed game tilt, not the 1/3 picture.
     squid_tilt target_tilt_{};
     // Left bumper toggles the debug panel; off at start.
     bool debug_panel_ = false;

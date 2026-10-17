@@ -228,7 +228,7 @@ inline int squid_game_calibrate(squid_game &g, const rv_istate &state, uint64_t 
     return squid_input_calibrate(g.input, state);
 }
 
-// Back to the round start: a fresh layout and the shown tilt and keys level; the neutral is kept.
+// Back to the round start: a fresh layout and the smoothed game tilt and keys level; the neutral is kept.
 // A refused layout changes nothing.
 inline int squid_game_restart(squid_game &g)
 {

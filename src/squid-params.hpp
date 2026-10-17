@@ -109,6 +109,10 @@ constexpr float SQUID_CAMERA_FOV_DEG = 30.0f;
 // at a visible tilt of +-12 deg on both axes (35 / 3 = 11.7, rounded up), look-at at the origin or at y 0.6.
 constexpr float SQUID_CAMERA_DISTANCE = 20.5f;
 
+// Height of the look-at point above the origin, in world units. It keeps the Earth low in the frame: with the
+// structure's pose (pitch 56.7 deg) the plate normal is 15 deg off the ray from the eye to the plate centre.
+constexpr float SQUID_CAMERA_TARGET_Y = 0.6f;
+
 // Clip planes. The dome sphere with size-4 balls lies about 16 to 26 from the eye; near 8 and far 40 cut none of it.
 constexpr float SQUID_CAMERA_NEAR = 8.0f;
 constexpr float SQUID_CAMERA_FAR = 40.0f;

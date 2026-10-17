@@ -56,12 +56,14 @@ inline int squid_scene_find(rv_pdklib::ecs_world &world, const char *name, rv_pd
     return RV_ERR_NOENT;
 }
 
-// The camera of the scene's models and of the debug lines: one view for both, looking at the Earth's centre.
+// The camera of the scene's models: looking at (0, target y, 0) from the elevation and distance of the constants.
 inline void squid_scene_camera_make(rv_cg_camera &camera)
 {
     const float elevation = SQUID_CAMERA_ELEVATION_DEG * SQUID_DEG_TO_RAD;
-    camera.eye = rv_cg_vec3{ 0.0f, SQUID_CAMERA_DISTANCE * std::sin(elevation), SQUID_CAMERA_DISTANCE * std::cos(elevation) };
-    camera.target = rv_cg_vec3{ 0.0f, 0.0f, 0.0f };
+    const float eye_y = SQUID_CAMERA_TARGET_Y + SQUID_CAMERA_DISTANCE * std::sin(elevation);
+    const float eye_z = SQUID_CAMERA_DISTANCE * std::cos(elevation);
+    camera.eye = rv_cg_vec3{ 0.0f, eye_y, eye_z };
+    camera.target = rv_cg_vec3{ 0.0f, SQUID_CAMERA_TARGET_Y, 0.0f };
     camera.up = rv_cg_vec3{ 0.0f, 1.0f, 0.0f };
     camera.fov_y = SQUID_CAMERA_FOV_DEG * SQUID_DEG_TO_RAD;
     camera.near_plane = SQUID_CAMERA_NEAR;
@@ -100,19 +102,22 @@ inline int squid_scene_fx_point(rv_pdklib::rv_vec3 point, rv_pdklib::fx_vec3 &ou
     return RV_OK;
 }
 
-// Tilt angles in degrees to the tilt root's Q20.12 rotation (x, 0, z); rotation is untouched on error.
+// Game tilt angles in degrees to the tilt root's Q20.12 rotation (x, 0, z), scaled by SQUID_VISIBLE_TILT_SHARE: the
+// world on screen tilts by a share of the game tilt. The physics keeps the full game tilt; rotation is untouched on error.
 inline int squid_scene_tilt(float tilt_x_deg, float tilt_z_deg, rv_pdklib::fx_vec3 &rotation)
 {
+    const float shown_x_deg = tilt_x_deg * SQUID_VISIBLE_TILT_SHARE;
+    const float shown_z_deg = tilt_z_deg * SQUID_VISIBLE_TILT_SHARE;
     rv_pdklib::fx tilt_x{};
     rv_pdklib::fx tilt_z{};
-    const int x_code = rv_pdklib::fx_from_double(tilt_x_deg, tilt_x);
+    const int x_code = rv_pdklib::fx_from_double(shown_x_deg, tilt_x);
     if (x_code != RV_OK) {
-        RV_LOG_ERR(SQUID_SCENE_TAG, "tilt x {} deg is outside the Q20.12 range; rotation kept", tilt_x_deg);
+        RV_LOG_ERR(SQUID_SCENE_TAG, "shown tilt x {} deg is outside the Q20.12 range; rotation kept", shown_x_deg);
         return x_code;
     }
-    const int z_code = rv_pdklib::fx_from_double(tilt_z_deg, tilt_z);
+    const int z_code = rv_pdklib::fx_from_double(shown_z_deg, tilt_z);
     if (z_code != RV_OK) {
-        RV_LOG_ERR(SQUID_SCENE_TAG, "tilt z {} deg is outside the Q20.12 range; rotation kept", tilt_z_deg);
+        RV_LOG_ERR(SQUID_SCENE_TAG, "shown tilt z {} deg is outside the Q20.12 range; rotation kept", shown_z_deg);
         return z_code;
     }
     rotation = rv_pdklib::fx_vec3{ tilt_x, 0, tilt_z };
