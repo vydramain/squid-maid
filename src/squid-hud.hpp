@@ -1,6 +1,6 @@
 #pragma once
 
-// HUD text over the frame: the hint of the phase and the debug panel.
+// HUD text over the frame: the hint of the phase, the beer counter and the debug panel.
 // Drawing only. The caller owns the font style (squid_draw_font_load in squid-draw.hpp) and the round data.
 
 #include <array>
@@ -33,9 +33,11 @@ constexpr int SQUID_HUD_MARGIN_PX = 4;
 // Blank lines between the hint and the debug panel.
 constexpr int SQUID_HUD_PANEL_GAP_LINES = 1;
 
-// What the hint and the debug panel read from the round. Built positionally by squid-maid.cpp: keep the field order.
+// What the hint, the beer counter and the debug panel read from the round. Built positionally by squid-maid.cpp: keep
+// the field order.
 struct squid_hud_round {
     squid_phase phase = squid_phase::prepare;
+    int beer_drunk = 0;
 };
 
 // What the debug panel shows. Built positionally by squid-maid.cpp: keep the field order.
@@ -70,6 +72,15 @@ constexpr auto SQUID_HUD_PHASE_HINTS = std::to_array<std::string_view>({
     SQUID_TEXT_HINT_PAUSE,
 });
 static_assert(SQUID_HUD_PHASE_HINTS.size() == SQUID_PHASE_COUNT, "SQUID_HUD_PHASE_HINTS needs one hint per phase");
+
+// The beer counter shows in play and pause only, not while preparing or ready.
+constexpr auto SQUID_HUD_PHASE_SHOWS_BEER = std::to_array<bool>({
+    false,
+    false,
+    true,
+    true,
+});
+static_assert(SQUID_HUD_PHASE_SHOWS_BEER.size() == SQUID_PHASE_COUNT, "SQUID_HUD_PHASE_SHOWS_BEER needs one flag per phase");
 
 // Vertical step of one line: the font line plus the gap.
 inline int squid_hud_line_step(rv_pdklib::rv_font_style style)
@@ -132,13 +143,24 @@ inline int squid_hud_put_wrapped(rv_cv *cv, rv_pdklib::rv_font_style style, int 
     return RV_OK;
 }
 
-// The hint: a lead line, then the buttons of the phase.
+// The beer counter: one line under the hint, in the phases SQUID_HUD_PHASE_SHOWS_BEER marks.
+inline int squid_hud_beer(rv_cv *cv, rv_pdklib::rv_font_style style, int max_px, int &y, const squid_hud_round &round)
+{
+    if (!SQUID_HUD_PHASE_SHOWS_BEER[static_cast<std::size_t>(round.phase)]) {
+        return RV_OK;
+    }
+    const std::string text = std::format(SQUID_TEXT_BEER, round.beer_drunk, SQUID_BEER_GOAL);
+    return squid_hud_put_wrapped(cv, style, max_px, y, text);
+}
+
+// The hint: a lead line, then the buttons of the phase, then the beer counter.
 inline int squid_hud_hint(rv_cv *cv, rv_pdklib::rv_font_style style, int max_px, int &y, const squid_hud_round &round)
 {
     const auto index = static_cast<std::size_t>(round.phase);
     const int lead_code = squid_hud_put_wrapped(cv, style, max_px, y, SQUID_HUD_PHASE_LEADS[index]);
     const int buttons_code = squid_hud_put_wrapped(cv, style, max_px, y, SQUID_HUD_PHASE_HINTS[index]);
-    const int code = squid_hud_first(lead_code, buttons_code);
+    const int beer_code = squid_hud_beer(cv, style, max_px, y, round);
+    const int code = squid_hud_first(squid_hud_first(lead_code, buttons_code), beer_code);
     if (code != RV_OK) {
         return code;
     }

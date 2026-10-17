@@ -319,7 +319,7 @@ private:
 
     squid_hud_round hud_round() const
     {
-        return squid_hud_round{ game_.phase };
+        return squid_hud_round{ game_.phase, game_.beer_drunk };
     }
 
     squid_hud_debug hud_debug() const

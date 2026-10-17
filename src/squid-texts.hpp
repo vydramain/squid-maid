@@ -25,6 +25,9 @@ constexpr std::string_view SQUID_TEXT_HINT_PLAY = "Правый бампер (E)
 constexpr std::string_view SQUID_TEXT_HINT_PAUSE =
     "Правый бампер (E): продолжить  NORTH (V): перекалибровка  VIEW (Tab): рестарт";
 
+// Beer counter: the first {} is the bottles drunk, the second the goal.
+constexpr std::string_view SQUID_TEXT_BEER = "Пиво {} / {}";
+
 // Debug panel. Axis names and source names are the labels the tilt readout uses.
 constexpr std::string_view SQUID_TEXT_DEBUG_TITLE = "Отладка";
 constexpr std::string_view SQUID_TEXT_AXIS_X = "X";
