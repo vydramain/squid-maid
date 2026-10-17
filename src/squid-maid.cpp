@@ -211,6 +211,7 @@ public:
     void frame_render()
     {
         frame_begin(SQUID_DRAW_BACKGROUND);
+        draw_step("stars", squid_draw_stars(rv_pdko_cv(pdk_)));
         draw_scene();
         draw_view();
         frame_end();

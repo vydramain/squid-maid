@@ -1,12 +1,14 @@
 #pragma once
 
-// Drawing constants and the font's video assets. Drawing only; the state comes from the caller.
+// Drawing constants, the font's video assets and the star field. Drawing only; the state comes from the caller.
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 
 #include "pdk/cv/rv_cv.h"
+#include "pdk/cv/rv_primitives.h"
 #include "pdk/cv/rv_texture.h"
 #include "pdk/rv_err.h"
 #include "pdklib/rv_font/rv_font.hpp"
@@ -103,6 +105,96 @@ inline int squid_draw_font_load(rv_cv *cv, int64_t &addr_font, int64_t &addr_pal
     addr_font = font_asset;
     addr_palette = palette_asset;
     return RV_OK;
+}
+
+// The star field: flat sprites in screen pixels, so the sky stays put while the scene tilts.
+// The lowest key: a star sorts behind every model, which covers it. Submitted before the scene, since primitives in one
+// bucket draw in submission order and the models' windows reach this key too.
+constexpr int32_t SQUID_STAR_DEPTH = RV_DEPTH_MIN;
+
+// Screen the star positions are generated for: the disc's 320x240 frame.
+constexpr int SQUID_STAR_SCREEN_WIDTH = 320;
+constexpr int SQUID_STAR_SCREEN_HEIGHT = 240;
+
+// Seed of the position generator: the same field on every frame and every run.
+constexpr uint32_t SQUID_STAR_SEED = 0x2F5A7C3BU;
+
+// Most stars are a single pixel; a few are 2x2 so the field has some depth.
+constexpr std::size_t SQUID_STAR_SMALL_COUNT = 160;
+constexpr std::size_t SQUID_STAR_LARGE_COUNT = 20;
+constexpr int SQUID_STAR_SMALL_PX = 1;
+constexpr int SQUID_STAR_LARGE_PX = 2;
+constexpr std::size_t SQUID_STAR_COUNT = SQUID_STAR_SMALL_COUNT + SQUID_STAR_LARGE_COUNT;
+
+// Three brightnesses of grey-blue, dim to bright; star i takes shade i modulo three.
+constexpr std::array<rv_color, 3> SQUID_STAR_SHADES = { {
+    { 56, 64, 88 },
+    { 110, 122, 150 },
+    { 176, 186, 210 },
+} };
+
+// x, y: upper-left corner in screen pixels; size: edge in pixels (1 or 2); colour: its shade.
+struct squid_star {
+    int16_t x;
+    int16_t y;
+    uint16_t size;
+    rv_color colour;
+};
+
+// xorshift32 step (shifts 13, 17, 5: Marsaglia's fixed triple). One generator for the whole field, so the table
+// is the same in every build.
+constexpr uint32_t squid_star_next(uint32_t state)
+{
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return state;
+}
+
+// Builds the table at compile time. Each star takes two generator steps, one for x and one for y, and its position is
+// kept where the whole star fits on screen.
+constexpr std::array<squid_star, SQUID_STAR_COUNT> squid_star_table()
+{
+    std::array<squid_star, SQUID_STAR_COUNT> table{};
+    uint32_t state = SQUID_STAR_SEED;
+    for (std::size_t i = 0; i < table.size(); ++i) {
+        const int size = i < SQUID_STAR_SMALL_COUNT ? SQUID_STAR_SMALL_PX : SQUID_STAR_LARGE_PX;
+        state = squid_star_next(state);
+        const uint32_t span_x = static_cast<uint32_t>(SQUID_STAR_SCREEN_WIDTH - size + 1);
+        table[i].x = static_cast<int16_t>(state % span_x);
+        state = squid_star_next(state);
+        const uint32_t span_y = static_cast<uint32_t>(SQUID_STAR_SCREEN_HEIGHT - size + 1);
+        table[i].y = static_cast<int16_t>(state % span_y);
+        table[i].size = static_cast<uint16_t>(size);
+        table[i].colour = SQUID_STAR_SHADES[i % SQUID_STAR_SHADES.size()];
+    }
+    return table;
+}
+
+constexpr auto SQUID_STARS = squid_star_table();
+
+// Puts every star as a flat sprite at SQUID_STAR_DEPTH. A refused put is kept as the first code and the rest are still
+// put; the caller logs the code.
+inline int squid_draw_stars(rv_cv *cv)
+{
+    int64_t first_code = RV_OK;
+    for (const squid_star &star : SQUID_STARS) {
+        rv_primitive primitive{};
+        primitive.type = RV_PRIMITIVE_SPRITE;
+        primitive.depth = SQUID_STAR_DEPTH;
+        primitive.data.sprite.fill_mode = RV_PRIMITIVE_FILL_MODE_FLAT_COLOURED;
+        primitive.data.sprite.mapping = RV_TEXWRAP_CLAMP;
+        primitive.data.sprite.color = star.colour;
+        primitive.data.sprite.x = star.x;
+        primitive.data.sprite.y = star.y;
+        primitive.data.sprite.width = star.size;
+        primitive.data.sprite.height = star.size;
+        const int64_t code = rv_cv_frame_put(cv, &primitive);
+        if (code != RV_OK && first_code == RV_OK) {
+            first_code = code;
+        }
+    }
+    return static_cast<int>(first_code);
 }
 
 } // namespace squid
