@@ -24,6 +24,7 @@
 #include "squid-scene.hpp"
 #include "squid-sound.hpp"
 #include "squid-state.hpp"
+#include "squid-view.hpp"
 
 namespace squid
 {
@@ -141,6 +142,12 @@ public:
         const int scene_code = squid_scene_load(world_, rv_pdko_cd(pdk_), scene_);
         note(scene_code);
         scene_ready_ = scene_code == RV_OK;
+        // The pool logs its refusal; without it no body is shown and the rest of the game runs.
+        if (scene_ready_) {
+            const int pool_code = squid_view_spawn(world_, rv_pdko_cd(pdk_), scene_, pool_);
+            note(pool_code);
+            bodies_ready_ = pool_code == RV_OK;
+        }
         // The loader logs the cause; without a font the view draws no text.
         font_ready_ = squid_draw_font_load(rv_pdko_cv(pdk_), addr_font_, addr_palette_) == RV_OK;
         const uint64_t abilities = rv_cio_iport_abilities(rv_pdko_cio(pdk_), 0);
@@ -166,7 +173,11 @@ public:
         const bool bumper = (pressed & RV_ISOURCE_BUMPER_LEFT) != 0;
         debug_panel_ = debug_panel_ != bumper;
         note(press(pressed, state, abilities, happened));
-        note(squid_game_step(game_, state, abilities, dt));
+        const squid_phase phase_before_step = game_.phase;
+        const int step_code = squid_game_step(game_, state, abilities, dt);
+        note(step_code);
+        // Only a frame that stepped the physics moves the bodies; the view rolls them by this dt.
+        const bool stepped = step_code == RV_OK && phase_before_step == squid_phase::play && game_.phase == squid_phase::play;
         // A frame the input refused may carry a non-finite stick or quaternion: the panel keeps the last target then.
         const squid_tilt target = target_tilt(state);
         if (std::isfinite(target.x_deg) && std::isfinite(target.z_deg)) {
@@ -179,6 +190,11 @@ public:
         note(squid_scene_tilt(game_.input.smoothed.x_deg, game_.input.smoothed.z_deg, rotation_));
         if (scene_ready_) {
             note(squid_scene_pose(world_, scene_, rotation_));
+        }
+        // After the step, so the bodies show this frame's positions. A frame that did not step the physics gives dt 0:
+        // the stale velocity would otherwise keep rolling the balls while paused, in prepare or ready.
+        if (bodies_ready_) {
+            note(squid_view_update(world_, pool_, game_.bodies, stepped ? dt : 0.0f));
         }
 
         if (frame_index_ % SQUID_LOG_PERIOD_FRAMES == 0) {
@@ -392,6 +408,9 @@ private:
     rv_pdklib::ecs_world world_;
     squid_scene_objects scene_;
     bool scene_ready_ = false;
+    // One scene entity per body slot; bodies_ready_ when every slot is loaded.
+    squid_view_pool pool_{};
+    bool bodies_ready_ = false;
     uint64_t pad_buttons_ = 0;
     bool sensor_ = false;
     int64_t frame_index_ = 0;

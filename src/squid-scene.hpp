@@ -263,6 +263,22 @@ inline int squid_scene_body_unload(rv_pdklib::ecs_world &world, uint32_t load_nu
     return RV_OK;
 }
 
+// Hides or shows a body entity: a hidden entity is not drawn. A stale id is refused.
+inline int squid_scene_body_hidden(rv_pdklib::ecs_world &world, rv_pdklib::ecs_id id, bool hidden)
+{
+    if (!rv_pdklib::ecs_entity_alive(world, id)) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "body entity is stale; visibility not set");
+        return RV_ERR_NOENT;
+    }
+    if (hidden) {
+        (void)rv_pdklib::ecs_component_ensure<rv_pdklib::ecs_component_hidden>(world, id);
+        return RV_OK;
+    }
+    // Not held means shown already: the remove's NOENT is not a refusal here.
+    (void)rv_pdklib::ecs_component_remove<rv_pdklib::ecs_component_hidden>(world, id);
+    return RV_OK;
+}
+
 // Writes the shown tilt to the tilt root; the ECS transform turns it into the structure's world matrices.
 inline int squid_scene_pose(rv_pdklib::ecs_world &world, const squid_scene_objects &objects, rv_pdklib::fx_vec3 rotation)
 {
