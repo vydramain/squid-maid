@@ -1,18 +1,20 @@
 #pragma once
 
-// Game state of the squid round (docs/disdoc.md, 7.2, 7.3, 9.1-9.3): phase, timer, orbit, hits and free mode.
-// Rules and transitions only: no drawing and no button reads; the caller passes the pad state and the frame time.
+// Game state of the squid toy: phase, timer, the body set the physics steps in play, and the event counts of the last
+// play frame. Rules and transitions only: no drawing and no button reads; the caller passes the pad state and the frame time.
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <random>
 
 #include "squid-collide.hpp"
 #include "squid-input.hpp"
 #include "squid-orbit.hpp"
 #include "squid-params.hpp"
+#include "squid-physics.hpp"
 #include "squid-sequence.hpp"
 #include "pdk/cio/rv_isource.h"
 #include "pdk/rv_err.h"
@@ -24,8 +26,12 @@ namespace squid
 // Log tag of state messages.
 inline constexpr const char *squid_state_tag = "state";
 
-// Sum of the radii: Alkoldun touches a target whose centre is this close.
-constexpr float SQUID_TOUCH_DISTANCE = SQUID_ALKOLDUN_RADIUS + SQUID_DEBRIS_RADIUS;
+// Seed of the start layout: every start and restart draws the same bodies. The generator and the unit mapping are fixed,
+// and the overlap and inside tests are float, so the layout is the same on this build; not claimed across platforms.
+constexpr std::uint32_t SQUID_LAYOUT_SEED = 1018;
+
+// Draws per body before the layout is refused. A spot that is not found in this many tries is an error, not a retry.
+constexpr int SQUID_LAYOUT_ATTEMPTS = 10000;
 
 enum class squid_phase {
     prepare,
@@ -41,7 +47,7 @@ enum class squid_command {
     restart,
     free_mode
 };
-// Events move the phase without a command: the pad is lost in play, or the eighth hit ends the round.
+// Events move the phase without a command. Only pad_lost fires; round_over is kept in the table and nothing fires it.
 enum class squid_event {
     pad_lost,
     round_over
@@ -74,7 +80,7 @@ constexpr bool squid_names_set(const std::array<const char *, N> &names)
 static_assert(squid_names_set(SQUID_PHASE_NAMES) && squid_names_set(SQUID_COMMAND_NAMES) && squid_names_set(SQUID_EVENT_NAMES),
     "every phase, command and event needs a name");
 
-// Legal (phase, command) pairs and the phase each leads to. Any other pair is refused.
+// Legal (phase, command) pairs and the phase each leads to. Any other pair is refused; free mode has no row.
 struct squid_edge {
     squid_phase from;
     squid_command command;
@@ -85,8 +91,6 @@ inline constexpr auto SQUID_EDGES = std::to_array<squid_edge>({
     { squid_phase::prepare, squid_command::calibrate, squid_phase::ready },
     { squid_phase::ready, squid_command::calibrate, squid_phase::ready },
     { squid_phase::pause, squid_command::calibrate, squid_phase::pause },
-    { squid_phase::prepare, squid_command::free_mode, squid_phase::prepare },
-    { squid_phase::ready, squid_command::free_mode, squid_phase::ready },
     { squid_phase::ready, squid_command::start, squid_phase::play },
     { squid_phase::play, squid_command::pause, squid_phase::pause },
     { squid_phase::pause, squid_command::pause, squid_phase::play },
@@ -122,28 +126,96 @@ static_assert(squid_event_table_in_order(), "SQUID_EVENT_EDGES needs one row per
 struct squid_game {
     squid_phase phase = squid_phase::prepare;
     squid_input input{};
+    // The body set stepped in play, and the splits and absorbs of the last play frame.
+    squid_bodies bodies{};
+    squid_event_counts events{};
+    // Target sequence, orbit and debris touches: no longer advanced by the machine; kept as data until the round tasks
+    // remove them.
     squid_orbit orbit{};
     squid_sequence sequence{};
     squid_targets targets{};
     double time_s = 0.0;
     int touches = 0;
-    // Free mode: no active target and no end; debris touches count instead of hits.
     bool free_mode = false;
-    // Contact per target; the watched targets are swept each frame.
-    std::array<squid_contact, SQUID_TARGET_COUNT> contacts{};
 };
 
-// Collision results of one frame. Computed before the state is written, so a refused frame changes nothing.
-struct squid_frame_contacts {
-    // Watched at the start of the frame: the active target, or every target in free mode.
-    std::array<bool, SQUID_TARGET_COUNT> watched{};
-    // The step path touches the watched target.
-    std::array<bool, SQUID_TARGET_COUNT> swept{};
-    // The ball at the end pose overlaps the target: the contact a target starts with when it becomes active.
-    std::array<bool, SQUID_TARGET_COUNT> overlap{};
-};
+// The start layout has one Alkoldun and balls of the largest mass; the body capacity must hold them.
+static_assert(SQUID_START_BALLS + 1 <= SQUID_BODY_CAPACITY, "the start layout must fit the body set");
 
-// Builds the targets of a fresh game and checks their gaps; the game starts in prepare.
+// Variant of a fresh body, drawn from the layout generator.
+inline int squid_layout_variant(std::minstd_rand &rng)
+{
+    return static_cast<int>(rng() % static_cast<std::uint_fast32_t>(SQUID_MODEL_VARIANTS));
+}
+
+// Uniform in [-1, 1] from the generator: the generator and this mapping are fixed, so the draws repeat on this build.
+inline float squid_layout_unit(std::minstd_rand &rng)
+{
+    const float span = static_cast<float>(rng.max() - rng.min());
+    return 2.0f * static_cast<float>(rng() - rng.min()) / span - 1.0f;
+}
+
+// True when a body of this radius at pos is inside the disc and clear of every body in the set.
+inline bool squid_layout_clear(const squid_bodies &set, squid_flat pos, float radius)
+{
+    const float centre = std::sqrt(pos.x * pos.x + pos.z * pos.z);
+    if (centre + radius > SQUID_DISC_RADIUS) {
+        return false;
+    }
+    for (int i = 0; i < set.count; ++i) {
+        const squid_body &other = set.items[i];
+        const float dx = other.pos.x - pos.x;
+        const float dz = other.pos.z - pos.z;
+        if (std::sqrt(dx * dx + dz * dz) < radius + squid_radius_checked(other)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Appends the body at the first clear draw of the generator; refused with the set unchanged if no draw is clear.
+inline int squid_layout_place(squid_bodies &set, std::minstd_rand &rng, squid_body body)
+{
+    const float radius = squid_radius_checked(body);
+    for (int attempt = 0; attempt < SQUID_LAYOUT_ATTEMPTS; ++attempt) {
+        const float x = SQUID_DISC_RADIUS * squid_layout_unit(rng);
+        const float z = SQUID_DISC_RADIUS * squid_layout_unit(rng);
+        body.pos = squid_flat{ x, z };
+        if (squid_layout_clear(set, body.pos, radius)) {
+            set.items[set.count++] = body;
+            return RV_OK;
+        }
+    }
+    RV_LOG_ERR(squid_state_tag, "layout refused: no clear spot for body {} in {} attempts", set.count, SQUID_LAYOUT_ATTEMPTS);
+    return RV_ERR_NOMEM;
+}
+
+// The start layout: Alkoldun at the centre, then SQUID_START_BALLS balls of the largest mass around it. Built into a fresh
+// set and copied out only when every body fits, so a refused layout leaves the old set as it was.
+inline int squid_layout_build(squid_bodies &out)
+{
+    std::minstd_rand rng{ SQUID_LAYOUT_SEED };
+    squid_bodies set{};
+    squid_body alkoldun{};
+    if (squid_body_alkoldun(alkoldun, squid_layout_variant(rng), squid_flat{}) != RV_OK) {
+        return RV_ERR_INVAL;
+    }
+    set.items[set.count++] = alkoldun;
+    for (int i = 0; i < SQUID_START_BALLS; ++i) {
+        squid_body ball{};
+        if (squid_body_ball(ball, SQUID_BALL_MASS_MAX, squid_layout_variant(rng), squid_flat{}) != RV_OK) {
+            return RV_ERR_INVAL;
+        }
+        const int placed = squid_layout_place(set, rng, ball);
+        if (placed != RV_OK) {
+            return placed;
+        }
+    }
+    out = set;
+    return RV_OK;
+}
+
+// Builds the targets and the start layout of a fresh game; the game starts in prepare.
 inline int squid_game_init(squid_game &g)
 {
     const int built = squid_sequence_build(g.targets);
@@ -154,6 +226,10 @@ inline int squid_game_init(squid_game &g)
     const int checked = squid_sequence_check(g.targets);
     if (checked != RV_OK) {
         return checked;
+    }
+    const int layout = squid_layout_build(g.bodies);
+    if (layout != RV_OK) {
+        return layout;
     }
     g.phase = squid_phase::prepare;
     return RV_OK;
@@ -177,39 +253,33 @@ inline int squid_game_calibrate(squid_game &g, const rv_istate &state, uint64_t 
     return squid_input_calibrate(g.input, state);
 }
 
-// Back to the round start: the neutral is kept, the shown tilt and keys level, the free mode stays.
-inline void squid_game_restart(squid_game &g)
+// Back to the round start: a fresh layout, the timer and the shown tilt and keys level; the neutral is kept.
+// A refused layout changes nothing.
+inline int squid_game_restart(squid_game &g)
 {
+    const int layout = squid_layout_build(g.bodies);
+    if (layout != RV_OK) {
+        return layout;
+    }
     g.orbit = squid_orbit{};
     g.time_s = 0.0;
+    g.events = squid_event_counts{};
     g.touches = 0;
     squid_input_level(g.input);
     g.input.smoothed = squid_tilt{};
     squid_sequence_restart(g.sequence);
-    if (g.free_mode) {
-        squid_sequence_free(g.sequence);
-    }
-    g.contacts = {};
+    return RV_OK;
 }
 
-inline void squid_game_set_free(squid_game &g)
-{
-    g.free_mode = true;
-    squid_sequence_free(g.sequence);
-}
-
-// Runs the effect of an accepted command. A refused effect (bad calibration) is returned and the phase stays.
+// Runs the effect of an accepted command. A refused effect (bad calibration or layout) is returned and the phase stays.
 inline int squid_game_apply(squid_game &g, squid_command command, const rv_istate &state, uint64_t abilities)
 {
     switch (command) {
     case squid_command::calibrate:
         return squid_game_calibrate(g, state, abilities);
     case squid_command::restart:
-        squid_game_restart(g);
-        break;
+        return squid_game_restart(g);
     case squid_command::free_mode:
-        squid_game_set_free(g);
-        break;
     case squid_command::start:
     case squid_command::pause:
         break;
@@ -253,76 +323,8 @@ inline int squid_game_fire(squid_game &g, squid_event event)
     return RV_OK;
 }
 
-// Pose of the orbit at a frame: phase and the shown tilt.
-inline squid_sweep squid_game_pose(const squid_game &g)
-{
-    return squid_sweep{ g.orbit.phase_rad, g.input.smoothed.x_deg, g.input.smoothed.z_deg };
-}
-
-// Sweeps the step path and tests the end pose for every target, writing nothing. Watched is taken from the state
-// as it is now, which is the start of the frame.
-inline int squid_game_evaluate(const squid_game &g, const squid_sweep &from, const squid_sweep &to, squid_frame_contacts &out)
-{
-    for (int i = 0; i < SQUID_TARGET_COUNT; ++i) {
-        const rv_pdklib::rv_vec3 center = g.targets[i].position;
-        const int point = squid_collide_sweep(to, to, center, SQUID_TOUCH_DISTANCE, out.overlap[i]);
-        if (point != RV_OK) {
-            return point;
-        }
-        out.watched[i] = g.free_mode || i == g.sequence.active;
-        const int swept = out.watched[i] ? squid_collide_sweep(from, to, center, SQUID_TOUCH_DISTANCE, out.swept[i]) : RV_OK;
-        if (swept != RV_OK) {
-            return swept;
-        }
-    }
-    return RV_OK;
-}
-
-// A contact that starts: a touch of debris in free mode; a hit on the active target, which hands over to the next
-// one. The next target starts with the contact its ball has at this pose, so only a new contact can count.
-inline int squid_game_on_contact(squid_game &g, const squid_frame_contacts &frame)
-{
-    if (g.free_mode) {
-        g.touches += 1;
-        return RV_OK;
-    }
-    const int hit = squid_sequence_hit(g.sequence);
-    if (hit != RV_OK) {
-        return hit;
-    }
-    const int next = g.sequence.active;
-    if (next != SQUID_SEQUENCE_NONE) {
-        g.contacts[static_cast<std::size_t>(next)].touching = frame.overlap[static_cast<std::size_t>(next)];
-    }
-    return RV_OK;
-}
-
-// Per disdoc 9.2 a pass through the next target in the frame of a hit does not count. At the console's fixed 1/60 s
-// step the ball moves at most ~2.8 units per frame, less than the 4.8 it needs to reach the next target (gaps of 6.1);
-// a longer frame could pass it uncounted.
-inline int squid_game_commit(squid_game &g, const squid_frame_contacts &frame)
-{
-    for (int i = 0; i < SQUID_TARGET_COUNT; ++i) {
-        if (!frame.watched[i]) {
-            continue;
-        }
-        const bool entered = squid_contact_enter(g.contacts[i], frame.swept[i]);
-        if (!entered) {
-            continue;
-        }
-        const int counted = squid_game_on_contact(g, frame);
-        if (counted != RV_OK) {
-            return counted;
-        }
-        if (!g.free_mode) {
-            break;
-        }
-    }
-    return RV_OK;
-}
-
-// Orbit, timer and collisions of a play step. Collisions are evaluated from the next input and orbit before any
-// state is written; the input, orbit and timer are written after the contacts.
+// One play frame: the input moves first, then the physics steps with its smoothed tilt. The input, body set and timer
+// are written only when the physics accepts the frame.
 inline int squid_game_play(squid_game &g, const rv_istate &state, uint64_t abilities, float dt)
 {
     squid_input next_input = g.input;
@@ -330,41 +332,28 @@ inline int squid_game_play(squid_game &g, const rv_istate &state, uint64_t abili
     if (input_rc != RV_OK) {
         return input_rc;
     }
-    squid_orbit next_orbit = g.orbit;
-    const int stepped = squid_orbit_step(next_orbit, dt);
+    squid_event_counts counts{};
+    const int stepped = squid_physics_frame(g.bodies, next_input.smoothed, dt, counts);
     if (stepped != RV_OK) {
         return stepped;
     }
-    const squid_sweep from = squid_game_pose(g);
-    const squid_sweep to{ next_orbit.phase_rad, next_input.smoothed.x_deg, next_input.smoothed.z_deg };
-    squid_frame_contacts frame{};
-    const int evaluated = squid_game_evaluate(g, from, to, frame);
-    if (evaluated != RV_OK) {
-        return evaluated;
-    }
-    const int committed = squid_game_commit(g, frame);
-    if (committed != RV_OK) {
-        return committed;
-    }
     g.input = next_input;
-    g.orbit = next_orbit;
+    g.events = counts;
     g.time_s += dt;
-    if (!squid_sequence_done(g.sequence)) {
-        return RV_OK;
-    }
-    RV_LOG_INFO(squid_state_tag, "round over after {} s", g.time_s);
-    return squid_game_fire(g, squid_event::round_over);
+    return RV_OK;
 }
 
-// One frame of dt seconds. Ready takes input only; play also moves the orbit and timer. Losing the pad in play
-// pauses the round. Prepare, pause and result do not move.
+// One frame of dt seconds. Ready takes input only; play also steps the physics and the timer. Losing the pad in play
+// pauses the round. Prepare and pause do not move.
 inline int squid_game_step(squid_game &g, const rv_istate &state, uint64_t abilities, float dt)
 {
-    const bool dt_bad = !std::isfinite(dt) || dt < 0.0f;
+    const bool dt_bad = !std::isfinite(dt) || dt <= 0.0f;
     if (dt_bad) {
-        RV_LOG_ERR(squid_state_tag, "step refused: dt {} is negative or not finite", dt);
+        RV_LOG_ERR(squid_state_tag, "step refused: dt {} is not a positive finite number", dt);
         return RV_ERR_INVAL;
     }
+    // The counts are of this frame only: a frame that steps no physics leaves them zero.
+    g.events = squid_event_counts{};
     const bool playing = g.phase == squid_phase::play;
     const bool listening = playing || g.phase == squid_phase::ready;
     if (!listening) {
