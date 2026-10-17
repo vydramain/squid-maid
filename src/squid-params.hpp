@@ -82,7 +82,7 @@ constexpr float SQUID_SPIN_DECAY_S = 10.0f;
 // turned into rolling.
 constexpr float SQUID_SPIN_IMPACT_GAIN = 1.0f;
 
-// Top of the hover bob in world units, so the view's height stays in 0..SQUID_HOVER_MAX; the physics does not read it.
+// Top of the hover bob in world units, so the hover lift stays in 0..SQUID_HOVER_MAX; the physics does not read it.
 constexpr float SQUID_HOVER_MAX = 0.4f;
 
 // Hover period in seconds, uniform in these bounds at birth: a slow bob, not a jitter.

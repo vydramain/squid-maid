@@ -1,7 +1,8 @@
 #pragma once
 
 // Display of the squid game's bodies: one scene entity per body slot under the tilt root, placed at the body's disc
-// position on the dome and rolled by its last step. Display only: physics never reads these results.
+// position on the dome, lifted by its hover, and turned by the display rotation the physics step keeps. Display only:
+// the view reads the body and never writes it.
 
 #include <cstdint>
 #include <iterator>
@@ -58,9 +59,9 @@ inline int squid_view_model(const squid_body &body, const char *&model)
     return RV_OK;
 }
 
-// Rolls the body by its last step (from the position dt ago, to the position now) and writes its model, position and
-// rotation to its entity. A refusal keeps the entity's previous pose; its cause is logged where it is found.
-inline int squid_view_body_set(rv_pdklib::ecs_world &world, rv_pdklib::ecs_id id, squid_body &body, float dt)
+// Writes the body's model, position (its dome centre, lifted by its hover) and rotation to its entity. A refusal keeps
+// the entity's previous pose; its cause is logged where it is found.
+inline int squid_view_body_set(rv_pdklib::ecs_world &world, rv_pdklib::ecs_id id, const squid_body &body)
 {
     float radius = 0.0f;
     if (squid_body_radius(body, radius) != RV_OK) {
@@ -70,19 +71,15 @@ inline int squid_view_body_set(rv_pdklib::ecs_world &world, rv_pdklib::ecs_id id
     if (squid_view_model(body, model) != RV_OK) {
         return RV_ERR_INVAL;
     }
-    const rv_pdklib::rv_vec3 from = squid_dome_offset(body.pos.x - body.vel.x * dt, body.pos.z - body.vel.z * dt, radius);
-    const rv_pdklib::rv_vec3 to = squid_dome_offset(body.pos.x, body.pos.z, radius);
-    const int roll_code = squid_dome_roll(body.rot, from, to, radius);
-    if (roll_code != RV_OK) {
-        return roll_code;
-    }
+    const float lift = squid_dome_hover_lift(body.hover_phase);
+    const rv_pdklib::rv_vec3 centre = squid_dome_offset(body.pos.x, body.pos.z, radius, lift);
     rv_pdklib::fx_vec3 rotation{};
     const int euler_code = squid_dome_euler(body.rot, rotation);
     if (euler_code != RV_OK) {
         return euler_code;
     }
     rv_pdklib::fx_vec3 position{};
-    const int point_code = squid_scene_fx_point(to, position);
+    const int point_code = squid_scene_fx_point(centre, position);
     if (point_code != RV_OK) {
         return point_code;
     }
@@ -133,14 +130,14 @@ inline int squid_view_spawn(rv_pdklib::ecs_world &world, rv_cd *cd, const squid_
 
 // Shows slot i as body i with its pose and hides the slots past the count. Every slot is visited; the first refusal
 // is returned.
-inline int squid_view_update(rv_pdklib::ecs_world &world, const squid_view_pool &pool, squid_bodies &bodies, float dt)
+inline int squid_view_update(rv_pdklib::ecs_world &world, const squid_view_pool &pool, const squid_bodies &bodies)
 {
     int first = RV_OK;
     for (int i = 0; i < SQUID_BODY_CAPACITY; ++i) {
         const squid_view_slot &slot = pool.slots[i];
         const bool shown = i < bodies.count;
         const int hidden_code = squid_scene_body_hidden(world, slot.id, !shown);
-        const int pose_code = shown ? squid_view_body_set(world, slot.id, bodies.items[i], dt) : RV_OK;
+        const int pose_code = shown ? squid_view_body_set(world, slot.id, bodies.items[i]) : RV_OK;
         const int code = hidden_code != RV_OK ? hidden_code : pose_code;
         if (code != RV_OK && first == RV_OK) {
             first = code;

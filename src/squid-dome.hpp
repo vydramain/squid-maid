@@ -1,7 +1,7 @@
 #pragma once
 
-// Disc on the dome: the disc maps by azimuthal equidistant projection, and a rolling ball turns by its path over
-// its radius. Display only: physics never reads these results.
+// Disc on the dome: the disc maps by azimuthal equidistant projection, and a ball hovers above its point by the lift
+// of its hover phase. Display only: physics never reads these results.
 
 #include <cmath>
 #include <numbers>
@@ -25,49 +25,25 @@ constexpr double SQUID_DOME_GIMBAL_COS = 1e-6;
 // Degrees per radian: the transform's rotation is in degrees.
 constexpr double SQUID_DOME_RAD_TO_DEG = 180.0 / std::numbers::pi;
 
-// Centre of a ball of radius ball_r on the dome, relative to the dome centre. The disc point (x, z) at distance d from
-// the disc centre has polar angle d / R; the centre sits on the normal at R + ball_r. Continuous at d = 0 and phi = +-pi.
-inline rv_pdklib::rv_vec3 squid_dome_offset(float disc_x, float disc_z, float ball_r)
+// Centre of a ball of radius ball_r on the dome, relative to the dome centre, lifted by lift (world units) along the
+// normal. The disc point (x, z) at distance d from the disc centre has polar angle d / R; the centre sits on the normal
+// at R + ball_r + lift. Continuous at d = 0 and phi = +-pi.
+inline rv_pdklib::rv_vec3 squid_dome_offset(float disc_x, float disc_z, float ball_r, float lift)
 {
     const float d = std::sqrt(disc_x * disc_x + disc_z * disc_z);
     const float theta = d / SQUID_DOME_RADIUS;
     const float phi = std::atan2(disc_z, disc_x);
-    const float reach = SQUID_DOME_RADIUS + ball_r;
+    const float reach = SQUID_DOME_RADIUS + ball_r + lift;
     return rv_pdklib::rv_vec3{ reach * std::sin(theta) * std::cos(phi),
         reach * std::cos(theta),
         reach * std::sin(theta) * std::sin(phi) };
 }
 
-// Turns the ball by |path| / ball_r about normalize(cross(n, path)), n = the outward normal at from: the world
-// rotation that rolls it without slipping. A zero path keeps the rotation; a bad radius or a path with no tangent part
-// on the dome is refused and the rotation kept.
-inline int squid_dome_roll(rv_pdklib::rv_vec4 &rotation, rv_pdklib::rv_vec3 from, rv_pdklib::rv_vec3 to, float ball_r)
+// Hover lift in world units for a hover phase: 0 at phase 0, SQUID_HOVER_MAX at phase pi, smooth in between, so the
+// ball bobs over the dome and never sinks into it. 1 - cos spans 0..2; the half maps it onto 0..1 of SQUID_HOVER_MAX.
+inline float squid_dome_hover_lift(float phase)
 {
-    const bool bad_r = !std::isfinite(ball_r) || ball_r <= 0.0f;
-    if (bad_r) {
-        RV_LOG_ERR(squid_dome_tag, "roll refused: radius {} is not positive and finite; rotation kept", ball_r);
-        return RV_ERR_INVAL;
-    }
-    const rv_pdklib::rv_vec3 delta = to - from;
-    const float path = rv_pdklib::rv_length(delta);
-    const rv_pdklib::rv_vec3 tangent_axis = rv_pdklib::rv_cross(rv_pdklib::rv_normalize(from), delta);
-    const float axis_len = rv_pdklib::rv_length(tangent_axis);
-    const bool bad_path = !std::isfinite(path) || (path > 0.0f && axis_len == 0.0f);
-    if (bad_path) {
-        RV_LOG_ERR(squid_dome_tag, "roll refused: path {} is not finite or has no tangent part; rotation kept", path);
-        return RV_ERR_INVAL;
-    }
-    // A zero path has no axis: the step is the identity.
-    const float inv_axis = axis_len > 0.0f ? 1.0f / axis_len : 0.0f;
-    const rv_pdklib::rv_vec3 axis = tangent_axis * inv_axis;
-    const float half = 0.5f * path / ball_r;
-    const float s = std::sin(half);
-    const rv_pdklib::rv_vec4 step{ axis.x * s, axis.y * s, axis.z * s, std::cos(half) };
-    const rv_pdklib::rv_vec4 turned = squid_quat_mul(step, rotation);
-    // Renormalized: float drift of repeated products would otherwise grow.
-    const float len = std::sqrt(rv_pdklib::rv_dot(turned, turned));
-    rotation = turned * (1.0f / len);
-    return RV_OK;
+    return 0.5f * SQUID_HOVER_MAX * (1.0f - std::cos(phase));
 }
 
 // Euler angles (degrees) of the transform's Ry * Rx * Rz that reproduce the matrix of the unit quaternion q.

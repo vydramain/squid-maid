@@ -178,7 +178,7 @@ public:
         const squid_phase phase_before_step = game_.phase;
         const int step_code = squid_game_step(game_, state, abilities, dt);
         note(step_code);
-        // Only a frame that stepped the physics moves the bodies; the view rolls them by this dt.
+        // Only a frame that stepped the physics moves the bodies.
         const bool stepped = step_code == RV_OK && phase_before_step == squid_phase::play && game_.phase == squid_phase::play;
         // A frame the input refused may carry a non-finite stick or quaternion: the panel keeps the last target then.
         const squid_tilt target = target_tilt(state);
@@ -193,10 +193,10 @@ public:
         if (scene_ready_) {
             note(squid_scene_pose(world_, scene_, rotation_));
         }
-        // After the step, so the bodies show this frame's positions. A frame that did not step the physics gives dt 0:
-        // the stale velocity would otherwise keep rolling the balls while paused, in prepare or ready.
+        // After the step, so the bodies show this frame's positions and display rotation; a paused frame leaves both as
+        // they were.
         if (bodies_ready_) {
-            note(squid_view_update(world_, pool_, game_.bodies, stepped ? dt : 0.0f));
+            note(squid_view_update(world_, pool_, game_.bodies));
         }
 
         if (frame_index_ % SQUID_LOG_PERIOD_FRAMES == 0) {
