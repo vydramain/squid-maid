@@ -1,6 +1,6 @@
 #pragma once
 
-// Game state of the squid toy: phase, timer, the body set the physics steps in play, and the event counts of the last
+// Game state of the squid toy: phase, the body set the physics steps in play, and the event counts of the last
 // play frame. Rules and transitions only: no drawing and no button reads; the caller passes the pad state and the frame time.
 
 #include <algorithm>
@@ -10,12 +10,9 @@
 #include <cstdint>
 #include <random>
 
-#include "squid-collide.hpp"
 #include "squid-input.hpp"
-#include "squid-orbit.hpp"
 #include "squid-params.hpp"
 #include "squid-physics.hpp"
-#include "squid-sequence.hpp"
 #include "pdk/cio/rv_isource.h"
 #include "pdk/rv_err.h"
 #include "pdklib/rv_logs/rv_logs.hpp"
@@ -37,35 +34,28 @@ enum class squid_phase {
     prepare,
     ready,
     play,
-    pause,
-    result
+    pause
 };
 enum class squid_command {
     calibrate,
     start,
     pause,
-    restart,
-    free_mode
+    restart
 };
-// Events move the phase without a command. Only pad_lost fires; round_over is kept in the table and nothing fires it.
+// Events move the phase without a command.
 enum class squid_event {
-    pad_lost,
-    round_over
+    pad_lost
 };
 
 // Enumerator counts, from the enums; the name and event tables are sized by them.
-constexpr std::size_t SQUID_PHASE_COUNT = static_cast<std::size_t>(squid_phase::result) + 1;
-constexpr std::size_t SQUID_COMMAND_COUNT = static_cast<std::size_t>(squid_command::free_mode) + 1;
-constexpr std::size_t SQUID_EVENT_COUNT = static_cast<std::size_t>(squid_event::round_over) + 1;
+constexpr std::size_t SQUID_PHASE_COUNT = static_cast<std::size_t>(squid_phase::pause) + 1;
+constexpr std::size_t SQUID_COMMAND_COUNT = static_cast<std::size_t>(squid_command::restart) + 1;
+constexpr std::size_t SQUID_EVENT_COUNT = static_cast<std::size_t>(squid_event::pad_lost) + 1;
 
 // Names for the refusal log, indexed by the enum value.
-inline constexpr std::array<const char *, SQUID_PHASE_COUNT> SQUID_PHASE_NAMES{ "prepare", "ready", "play", "pause", "result" };
-inline constexpr std::array<const char *, SQUID_COMMAND_COUNT> SQUID_COMMAND_NAMES{ "calibrate",
-    "start",
-    "pause",
-    "restart",
-    "free_mode" };
-inline constexpr std::array<const char *, SQUID_EVENT_COUNT> SQUID_EVENT_NAMES{ "pad_lost", "round_over" };
+inline constexpr std::array<const char *, SQUID_PHASE_COUNT> SQUID_PHASE_NAMES{ "prepare", "ready", "play", "pause" };
+inline constexpr std::array<const char *, SQUID_COMMAND_COUNT> SQUID_COMMAND_NAMES{ "calibrate", "start", "pause", "restart" };
+inline constexpr std::array<const char *, SQUID_EVENT_COUNT> SQUID_EVENT_NAMES{ "pad_lost" };
 
 template <std::size_t N>
 constexpr bool squid_names_set(const std::array<const char *, N> &names)
@@ -80,7 +70,7 @@ constexpr bool squid_names_set(const std::array<const char *, N> &names)
 static_assert(squid_names_set(SQUID_PHASE_NAMES) && squid_names_set(SQUID_COMMAND_NAMES) && squid_names_set(SQUID_EVENT_NAMES),
     "every phase, command and event needs a name");
 
-// Legal (phase, command) pairs and the phase each leads to. Any other pair is refused; free mode has no row.
+// Legal (phase, command) pairs and the phase each leads to. Any other pair is refused.
 struct squid_edge {
     squid_phase from;
     squid_command command;
@@ -96,7 +86,6 @@ inline constexpr auto SQUID_EDGES = std::to_array<squid_edge>({
     { squid_phase::pause, squid_command::pause, squid_phase::play },
     { squid_phase::ready, squid_command::restart, squid_phase::ready },
     { squid_phase::pause, squid_command::restart, squid_phase::ready },
-    { squid_phase::result, squid_command::restart, squid_phase::ready },
 });
 
 // Phase changes that come from the round itself, not from a command.
@@ -109,7 +98,6 @@ struct squid_event_edge {
 // One row per event, in enum order (checked below).
 inline constexpr std::array<squid_event_edge, SQUID_EVENT_COUNT> SQUID_EVENT_EDGES{ {
     { squid_phase::play, squid_event::pad_lost, squid_phase::pause },
-    { squid_phase::play, squid_event::round_over, squid_phase::result },
 } };
 
 constexpr bool squid_event_table_in_order()
@@ -130,14 +118,6 @@ struct squid_game {
     // the physics (prepare, ready, pause, pad loss, a frame the physics refused); a step refused for its dt changes nothing.
     squid_bodies bodies{};
     squid_event_counts events{};
-    // Target sequence, orbit and debris touches: no longer advanced by the machine; kept as data until the round tasks
-    // remove them.
-    squid_orbit orbit{};
-    squid_sequence sequence{};
-    squid_targets targets{};
-    double time_s = 0.0;
-    int touches = 0;
-    bool free_mode = false;
 };
 
 // The start layout has one Alkoldun and balls of the largest mass; the body capacity must hold them.
@@ -216,18 +196,9 @@ inline int squid_layout_build(squid_bodies &out)
     return RV_OK;
 }
 
-// Builds the targets and the start layout of a fresh game; the game starts in prepare.
+// Builds the start layout of a fresh game; the game starts in prepare.
 inline int squid_game_init(squid_game &g)
 {
-    const int built = squid_sequence_build(g.targets);
-    if (built != RV_OK) {
-        RV_LOG_ERR(squid_state_tag, "init refused: the targets cannot be built");
-        return built;
-    }
-    const int checked = squid_sequence_check(g.targets);
-    if (checked != RV_OK) {
-        return checked;
-    }
     const int layout = squid_layout_build(g.bodies);
     if (layout != RV_OK) {
         return layout;
@@ -254,7 +225,7 @@ inline int squid_game_calibrate(squid_game &g, const rv_istate &state, uint64_t 
     return squid_input_calibrate(g.input, state);
 }
 
-// Back to the round start: a fresh layout, the timer and the shown tilt and keys level; the neutral is kept.
+// Back to the round start: a fresh layout and the shown tilt and keys level; the neutral is kept.
 // A refused layout changes nothing.
 inline int squid_game_restart(squid_game &g)
 {
@@ -262,13 +233,9 @@ inline int squid_game_restart(squid_game &g)
     if (layout != RV_OK) {
         return layout;
     }
-    g.orbit = squid_orbit{};
-    g.time_s = 0.0;
     g.events = squid_event_counts{};
-    g.touches = 0;
     squid_input_level(g.input);
     g.input.smoothed = squid_tilt{};
-    squid_sequence_restart(g.sequence);
     return RV_OK;
 }
 
@@ -280,7 +247,6 @@ inline int squid_game_apply(squid_game &g, squid_command command, const rv_istat
         return squid_game_calibrate(g, state, abilities);
     case squid_command::restart:
         return squid_game_restart(g);
-    case squid_command::free_mode:
     case squid_command::start:
     case squid_command::pause:
         break;
@@ -324,7 +290,7 @@ inline int squid_game_fire(squid_game &g, squid_event event)
     return RV_OK;
 }
 
-// One play frame: the input moves first, then the physics steps with its smoothed tilt. The input, body set and timer
+// One play frame: the input moves first, then the physics steps with its smoothed tilt. The input and body set
 // are written only when the physics accepts the frame.
 inline int squid_game_play(squid_game &g, const rv_istate &state, uint64_t abilities, float dt)
 {
@@ -340,11 +306,10 @@ inline int squid_game_play(squid_game &g, const rv_istate &state, uint64_t abili
     }
     g.input = next_input;
     g.events = counts;
-    g.time_s += dt;
     return RV_OK;
 }
 
-// One frame of dt seconds. Ready takes input only; play also steps the physics and the timer. Losing the pad in play
+// One frame of dt seconds. Ready takes input only; play also steps the physics. Losing the pad in play
 // pauses the round. Prepare and pause do not move.
 inline int squid_game_step(squid_game &g, const rv_istate &state, uint64_t abilities, float dt)
 {

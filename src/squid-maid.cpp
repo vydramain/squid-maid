@@ -20,7 +20,6 @@
 #include "squid-draw.hpp"
 #include "squid-hud.hpp"
 #include "squid-input.hpp"
-#include "squid-orbit.hpp"
 #include "squid-params.hpp"
 #include "squid-scene.hpp"
 #include "squid-sound.hpp"
@@ -55,7 +54,6 @@ constexpr auto SQUID_BUTTON_ROWS = std::to_array<squid_button_row>({
     { RV_ISOURCE_BUMPER_RIGHT, squid_phase::pause, squid_command::pause },
     { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::ready, squid_command::restart },
     { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::pause, squid_command::restart },
-    { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::result, squid_command::restart },
 });
 
 // The first row the pressed buttons give in this phase. One row per frame: a command must not chain into the next
@@ -69,14 +67,13 @@ const squid_button_row *button_row(uint64_t pressed, squid_phase phase)
     return it == SQUID_BUTTON_ROWS.end() ? nullptr : &*it;
 }
 
-// Events of one frame that may carry a sound: a press's calibration, the entry into play, the end.
+// Events of one frame that may carry a sound: a press's calibration and the entry into play.
 enum class squid_frame_event : int {
     calibrate = 0,
     start = 1,
-    finish = 2,
 };
 // Count of the enum above; the flags are indexed by it.
-constexpr std::size_t SQUID_FRAME_EVENT_COUNT = 3;
+constexpr std::size_t SQUID_FRAME_EVENT_COUNT = 2;
 using squid_frame_flags = std::array<bool, SQUID_FRAME_EVENT_COUNT>;
 
 struct squid_sound_rule {
@@ -86,13 +83,12 @@ struct squid_sound_rule {
 
 // One sound per frame, the first rule whose event happened: the single voice would cut the others anyway.
 constexpr auto SQUID_SOUND_RULES = std::to_array<squid_sound_rule>({
-    { squid_frame_event::finish, squid_sound_event::finish },
     { squid_frame_event::start, squid_sound_event::start },
     { squid_frame_event::calibrate, squid_sound_event::calibrate },
 });
 
 // The flags, the events and the rules must agree: one flag per event, and every event has a rule.
-static_assert(static_cast<std::size_t>(squid_frame_event::finish) + 1 == SQUID_FRAME_EVENT_COUNT,
+static_assert(static_cast<std::size_t>(squid_frame_event::start) + 1 == SQUID_FRAME_EVENT_COUNT,
     "SQUID_FRAME_EVENT_COUNT must equal the number of squid_frame_event values");
 constexpr bool squid_sound_rules_cover_events()
 {
@@ -258,8 +254,6 @@ private:
     {
         happened[static_cast<std::size_t>(squid_frame_event::start)] =
             phase_before == squid_phase::ready && game_.phase == squid_phase::play;
-        happened[static_cast<std::size_t>(squid_frame_event::finish)] =
-            game_.phase == squid_phase::result && phase_before != squid_phase::result;
         return play(happened);
     }
 
@@ -277,7 +271,7 @@ private:
     {
         RV_LOG_INFO(SQUID_MAID_TAG,
             "frame {} phase {} source {} tilt x {:+.2f} z {:+.2f} bodies {}, splits {} absorbs {}, "
-            "time {:.2f} s, refusals {} last rv_err {}",
+            "refusals {} last rv_err {}",
             frame_index_,
             SQUID_PHASE_NAMES[static_cast<std::size_t>(game_.phase)],
             sensor_ ? "sensor" : "reserve",
@@ -286,7 +280,6 @@ private:
             game_.bodies.count,
             game_.events.splits,
             game_.events.absorbs,
-            game_.time_s,
             refusals_,
             last_refusal_);
     }
@@ -304,18 +297,12 @@ private:
 
     squid_hud_round hud_round() const
     {
-        return squid_hud_round{ game_.phase, game_.sequence.hits, SQUID_TARGET_COUNT, game_.time_s, game_.free_mode };
+        return squid_hud_round{ game_.phase };
     }
 
     squid_hud_debug hud_debug() const
     {
-        return squid_hud_debug{ target_tilt_,
-            game_.input.smoothed,
-            sensor_,
-            game_.orbit.phase_rad / SQUID_ORBIT_TAU_RAD,
-            SQUID_ORBIT_PERIOD_S,
-            SQUID_ALKOLDUN_RADIUS,
-            SQUID_DEBRIS_RADIUS };
+        return squid_hud_debug{ target_tilt_, game_.input.smoothed, sensor_ };
     }
 
     // Input parameters, input source and the start layout: what a report needs to reproduce a round.
