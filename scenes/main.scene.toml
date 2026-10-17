@@ -1,7 +1,9 @@
-# The scene of the squid-maid prototype (docs/disdoc.md, sections 6, 10, 15.2). The tilt root sits at the origin with
-# scale 1 and no parent; the disc writes its rotation each frame. Alkoldun's position is also written each frame.
-# Values are Q20.12 (4096 = 1.0). The debris positions are set by code (squid_scene_place_debris: the target of each
-# junk object, in sequence order), so the positions of the junk objects below are placeholders.
+# The scene of the squid-maid prototype. The tilt root sits at the dome centre
+# (SQUID_DOME_CENTER in src/squid-params.hpp, -49 -3990 -242 in Q20.12) with scale 1 and no parent; the disc writes its
+# rotation each frame, so the structure tilts about the dome centre. The children are offset by minus that centre, so with
+# no tilt every object except Alkoldun is where it was when the root sat at the origin. Alkoldun's position is rewritten
+# each frame by the orbit code, uncompensated, so it is shifted by the dome centre until that code is removed.
+# Values are Q20.12 (4096 = 1.0).
 # The three elephants stand in a row (x = -1.1, 0, 1.1; z = 0) on the turtle, whose shell is scaled 2.5 x 0.3 x 1.4
 # (its top at y = -1.85). Each foot sits 0.00 to 0.03 into the shell, none hangs over it. The feet are at y = -1.9 and
 # the model is 1.6 high, so the backs touch the plate's underside at y = -0.3. The turtle's origin is at y = -2.12.
@@ -14,7 +16,7 @@ id = "7a500001"
 name = "tilt"
 parent = ""
 kind = "group"
-position = [0, 0, 0]
+position = [-49, -3990, -242]
 rotation = [0, 0, 0]
 scale = [4096, 4096, 4096]
 mesh = ""
@@ -25,7 +27,7 @@ id = "7a500002"
 name = "earth"
 parent = "7a500001"
 kind = "mesh"
-position = [0, 0, 0]
+position = [49, 3990, 242]
 rotation = [0, 0, 0]
 scale = [4096, 4096, 4096]
 mesh = "earth.gltf"
@@ -42,7 +44,7 @@ id = "7a500003"
 name = "alkoldun"
 parent = "7a500001"
 kind = "mesh"
-position = [24576, 0, 0]
+position = [24625, 3990, 242]
 rotation = [0, 0, 0]
 scale = [1024, 1024, 1024]
 mesh = "ball.gltf"
@@ -53,7 +55,7 @@ id = "7a500021"
 name = "elephant_0"
 parent = "7a500001"
 kind = "mesh"
-position = [-4506, -7782, 0]
+position = [-4457, -3792, 242]
 rotation = [0, 0, 0]
 scale = [4096, 4096, 4096]
 mesh = "elephant.gltf"
@@ -64,7 +66,7 @@ id = "7a500022"
 name = "elephant_1"
 parent = "7a500001"
 kind = "mesh"
-position = [0, -7782, 0]
+position = [49, -3792, 242]
 rotation = [0, 0, 0]
 scale = [4096, 4096, 4096]
 mesh = "elephant.gltf"
@@ -75,7 +77,7 @@ id = "7a500023"
 name = "elephant_2"
 parent = "7a500001"
 kind = "mesh"
-position = [4506, -7782, 0]
+position = [4555, -3792, 242]
 rotation = [0, 0, 0]
 scale = [4096, 4096, 4096]
 mesh = "elephant.gltf"
@@ -86,96 +88,8 @@ id = "7a500030"
 name = "turtle"
 parent = "7a500001"
 kind = "mesh"
-position = [0, -8689, 0]
+position = [49, -4699, 242]
 rotation = [0, 0, 0]
 scale = [10240, 1229, 5734]
 mesh = "turtle.gltf"
-texture = ""
-
-[[object]]
-id = "7a500011"
-name = "junk_crt"
-parent = ""
-kind = "mesh"
-position = [0, 0, 0]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = "junk_crt.gltf"
-texture = ""
-
-[[object]]
-id = "7a500012"
-name = "junk_floppy"
-parent = ""
-kind = "mesh"
-position = [0, 0, 0]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = "junk_floppy.gltf"
-texture = ""
-
-[[object]]
-id = "7a500013"
-name = "junk_cassette"
-parent = ""
-kind = "mesh"
-position = [0, 0, 0]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = "junk_cassette.gltf"
-texture = ""
-
-[[object]]
-id = "7a500014"
-name = "junk_phone"
-parent = ""
-kind = "mesh"
-position = [0, 0, 0]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = "junk_phone.gltf"
-texture = ""
-
-[[object]]
-id = "7a500015"
-name = "junk_tube"
-parent = ""
-kind = "mesh"
-position = [0, 0, 0]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = "junk_tube.gltf"
-texture = ""
-
-[[object]]
-id = "7a500016"
-name = "junk_reel"
-parent = ""
-kind = "mesh"
-position = [0, 0, 0]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = "junk_reel.gltf"
-texture = ""
-
-[[object]]
-id = "7a500017"
-name = "junk_punchcard"
-parent = ""
-kind = "mesh"
-position = [0, 0, 0]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = "junk_punchcard.gltf"
-texture = ""
-
-[[object]]
-id = "7a500018"
-name = "junk_calculator"
-parent = ""
-kind = "mesh"
-position = [0, 0, 0]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = "junk_calculator.gltf"
 texture = ""

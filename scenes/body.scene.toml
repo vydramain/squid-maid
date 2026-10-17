@@ -1,0 +1,16 @@
+# The template of one ball body, loaded once per body under the tilt root (src/squid-scene.hpp, squid_scene_body_spawn).
+# The model is set after the load; the name is a placeholder. Values are Q20.12 (4096 = 1.0).
+
+[scene]
+version = "1.1"
+
+[[object]]
+id = "7a600001"
+name = "body"
+parent = ""
+kind = "mesh"
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [4096, 4096, 4096]
+mesh = "m4_satellite.gltf"
+texture = ""

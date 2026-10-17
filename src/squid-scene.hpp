@@ -1,7 +1,8 @@
 #pragma once
 
-// The scene of the squid game in the ECS (docs/disdoc.md, 6, 10, 15.2): the tilt root with Alkoldun as its child, and
-// the debris targets outside the root. The disc writes the pose each frame; the ECS transform turns it into world matrices.
+// The scene of the squid game in the ECS: the tilt root at the dome centre with the
+// structure and Alkoldun as its children, and the ball body template that bodies are loaded from under the root. The
+// disc writes the pose each frame; the ECS transform turns it into world matrices.
 
 #include <array>
 #include <cmath>
@@ -10,7 +11,6 @@
 #include "squid-orbit.hpp"
 #include "squid-params.hpp"
 #include "squid-draw.hpp"
-#include "squid-sequence.hpp"
 #include "pdk/cd/rv_cd.h"
 #include "pdk/cg/rv_cg.h"
 #include "pdk/rv_err.h"
@@ -27,29 +27,19 @@ namespace squid
 // Log tag of scene messages.
 inline constexpr const char *SQUID_SCENE_TAG = "scene";
 
-// The scene file and the names of the objects the disc moves or reports; the objects are found by name.
+// The scene file, the ball body template, and the names of the objects the disc moves or reports; the objects are
+// found by name.
 inline constexpr const char *SQUID_SCENE_FILE = "main.scene.toml";
+inline constexpr const char *SQUID_SCENE_BODY_FILE = "body.scene.toml";
 inline constexpr const char *SQUID_SCENE_TILT_NAME = "tilt";
 inline constexpr const char *SQUID_SCENE_ALKOLDUN_NAME = "alkoldun";
-// Scene object of each target, in sequence order (index = target index); the code places each at its target.
-inline constexpr std::array<const char *, SQUID_TARGET_COUNT> SQUID_SCENE_DEBRIS_NAMES{
-    "junk_crt",
-    "junk_floppy",
-    "junk_cassette",
-    "junk_phone",
-    "junk_tube",
-    "junk_reel",
-    "junk_punchcard",
-    "junk_calculator",
-};
 // The frame system that sets the camera of the scene's models; it is registered under this name.
 inline constexpr const char *SQUID_SCENE_CAMERA_SYSTEM = "squid-camera";
 
-// Entities of the scene objects the disc moves or reports; debris[i] is the object of target i.
+// Entities of the scene objects the disc moves or reports.
 struct squid_scene_objects {
     rv_pdklib::ecs_id tilt{};
     rv_pdklib::ecs_id alkoldun{};
-    std::array<rv_pdklib::ecs_id, SQUID_TARGET_COUNT> debris{};
 };
 
 // Entity of the object with the name, in load order. A missing object is an error; the name is in the log.
@@ -112,32 +102,10 @@ inline int squid_scene_fx_point(rv_pdklib::rv_vec3 point, rv_pdklib::fx_vec3 &ou
     return RV_OK;
 }
 
-// Each debris object sits at its target's position; the code, not the scene file, sets them.
-inline int squid_scene_place_debris(rv_pdklib::ecs_world &world, const squid_scene_objects &objects)
-{
-    squid_targets targets{};
-    const int build_code = squid_sequence_build(targets);
-    if (build_code != RV_OK) {
-        return build_code;
-    }
-    for (int i = 0; i < SQUID_TARGET_COUNT; ++i) {
-        rv_pdklib::ecs_component_transform *debris =
-            rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, objects.debris[i]);
-        if (debris == nullptr) {
-            RV_LOG_ERR(SQUID_SCENE_TAG, "'{}' object has no transform", SQUID_SCENE_DEBRIS_NAMES[i]);
-            return RV_ERR_NOENT;
-        }
-        const int point_code = squid_scene_fx_point(targets[i].position, debris->position);
-        if (point_code != RV_OK) {
-            return point_code;
-        }
-    }
-    return RV_OK;
-}
-
-// Finds the objects, checks the tilt root (at the origin with scale 1 and no parent, as squid_orbit_position
-// assumes) and places the debris. Any refusal is returned with its cause logged.
-inline int squid_scene_check_and_place(rv_pdklib::ecs_world &world, squid_scene_objects &objects)
+// Finds the objects and checks the tilt root: at the dome centre with scale 1 and no parent. The old orbit code
+// (squid_orbit_position) still assumes the origin, so Alkoldun and the orbit lines are shifted by the dome centre until
+// the orbit code is removed. Any refusal is returned with its cause logged.
+inline int squid_scene_check(rv_pdklib::ecs_world &world, squid_scene_objects &objects)
 {
     const int tilt_code = squid_scene_find(world, SQUID_SCENE_TILT_NAME, objects.tilt);
     if (tilt_code != RV_OK) {
@@ -147,29 +115,25 @@ inline int squid_scene_check_and_place(rv_pdklib::ecs_world &world, squid_scene_
     if (alkoldun_code != RV_OK) {
         return alkoldun_code;
     }
-    for (int i = 0; i < SQUID_TARGET_COUNT; ++i) {
-        const int debris_code = squid_scene_find(world, SQUID_SCENE_DEBRIS_NAMES[i], objects.debris[i]);
-        if (debris_code != RV_OK) {
-            return debris_code;
-        }
-    }
     const rv_pdklib::ecs_component_transform *tilt =
         rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, objects.tilt);
     if (tilt == nullptr) {
         RV_LOG_ERR(SQUID_SCENE_TAG, "'{}' object has no transform", SQUID_SCENE_TILT_NAME);
         return RV_ERR_NOENT;
     }
-    const bool at_origin = tilt->position.x == 0 && tilt->position.y == 0 && tilt->position.z == 0;
+    rv_pdklib::fx_vec3 centre{};
+    const int centre_code =
+        squid_scene_fx_point(rv_pdklib::rv_vec3{ SQUID_DOME_CENTER_X, SQUID_DOME_CENTER_Y, SQUID_DOME_CENTER_Z }, centre);
+    if (centre_code != RV_OK) {
+        return centre_code;
+    }
+    const bool at_centre = tilt->position.x == centre.x && tilt->position.y == centre.y && tilt->position.z == centre.z;
     const bool unit_scale =
         tilt->scale.x == rv_pdklib::fx_one && tilt->scale.y == rv_pdklib::fx_one && tilt->scale.z == rv_pdklib::fx_one;
     const bool rootless = tilt->parent == rv_pdklib::ecs_id{};
-    if (!at_origin || !unit_scale || !rootless) {
-        RV_LOG_ERR(SQUID_SCENE_TAG, "scene refused: the tilt root must sit at the origin with scale 1 and no parent");
+    if (!at_centre || !unit_scale || !rootless) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "scene refused: the tilt root must sit at the dome centre with scale 1 and no parent");
         return RV_ERR_INVAL;
-    }
-    const int place_code = squid_scene_place_debris(world, objects);
-    if (place_code != RV_OK) {
-        return place_code;
     }
     return RV_OK;
 }
@@ -198,10 +162,91 @@ inline int squid_scene_load(rv_pdklib::ecs_world &world, rv_cd *cd, squid_scene_
         RV_LOG_ERR(SQUID_SCENE_TAG, "{} not loaded: rv_err {}", SQUID_SCENE_FILE, load_code);
         return load_code;
     }
-    const int check_code = squid_scene_check_and_place(world, objects);
+    const int check_code = squid_scene_check(world, objects);
     if (check_code != RV_OK) {
         squid_scene_discard(world, load_number);
         return check_code;
+    }
+    return RV_OK;
+}
+
+// Sets the model name of a body entity; the name is the model the disc packs (assets/models).
+inline int squid_scene_body_model(rv_pdklib::ecs_world &world, rv_pdklib::ecs_id id, const char *model)
+{
+    if (model == nullptr) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "body model is null; model not set");
+        return RV_ERR_INVAL;
+    }
+    rv_pdklib::ecs_component_model *component = rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_model>(world, id);
+    if (component == nullptr) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "body has no model; model '{}' not set", model);
+        return RV_ERR_NOENT;
+    }
+    component->name = model;
+    return RV_OK;
+}
+
+// Loads one ball body under the tilt root and sets its model. On success load_number is the load to unload later and
+// id is the body's entity; on error neither is written and no part of the body stays in the world.
+inline int squid_scene_body_spawn(rv_pdklib::ecs_world &world,
+    rv_cd *cd,
+    const squid_scene_objects &objects,
+    const char *model,
+    uint32_t &load_number,
+    rv_pdklib::ecs_id &id)
+{
+    uint32_t number = 0;
+    const int load_code = rv_pdklib::ecs_scene_load(world, cd, SQUID_SCENE_BODY_FILE, objects.tilt, number);
+    if (load_code != RV_OK) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "{} not loaded: rv_err {}", SQUID_SCENE_BODY_FILE, load_code);
+        return load_code;
+    }
+    // The load was just pushed, so its position is valid.
+    const auto &made = world.loads[rv_pdklib::ecs_load_position(world, number)].made;
+    if (made.size() != 1) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "{} must hold one object, holds {}", SQUID_SCENE_BODY_FILE, made.size());
+        squid_scene_discard(world, number);
+        return RV_ERR_INVAL;
+    }
+    const rv_pdklib::ecs_id body = made[0];
+    const int model_code = squid_scene_body_model(world, body, model);
+    if (model_code != RV_OK) {
+        squid_scene_discard(world, number);
+        return model_code;
+    }
+    load_number = number;
+    id = body;
+    return RV_OK;
+}
+
+// Places a body under the tilt root: model name, position in the tilt root's space (Q20.12) and Euler rotation.
+inline int squid_scene_body_set(rv_pdklib::ecs_world &world,
+    rv_pdklib::ecs_id id,
+    const char *model,
+    rv_pdklib::fx_vec3 position,
+    rv_pdklib::fx_vec3 rotation)
+{
+    rv_pdklib::ecs_component_transform *transform = rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, id);
+    if (transform == nullptr) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "body has no transform; pose not set");
+        return RV_ERR_NOENT;
+    }
+    const int model_code = squid_scene_body_model(world, id, model);
+    if (model_code != RV_OK) {
+        return model_code;
+    }
+    transform->position = position;
+    transform->rotation = rotation;
+    return RV_OK;
+}
+
+// Unloads a body by its load number. In a frame the unload waits for the frame's end.
+inline int squid_scene_body_unload(rv_pdklib::ecs_world &world, uint32_t load_number)
+{
+    const int unload_code = rv_pdklib::ecs_scene_unload(world, load_number);
+    if (unload_code != RV_OK) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "body load {} not unloaded: rv_err {}", load_number, unload_code);
+        return unload_code;
     }
     return RV_OK;
 }
@@ -222,7 +267,8 @@ inline int squid_scene_orbit_local(const squid_orbit &orbit, rv_pdklib::fx_vec3 
 }
 
 // Writes the shown tilt to the root and the bare orbit point to Alkoldun. The ECS transform turns them into world
-// matrices, so Alkoldun's world position equals squid_orbit_position up to the Q20.12 rounding of the local point.
+// matrices, so Alkoldun's world position is squid_orbit_position shifted by the dome centre (the root's position), up to
+// the Q20.12 rounding of the local point. Accepted until the orbit code is removed.
 inline int squid_scene_pose(rv_pdklib::ecs_world &world,
     const squid_scene_objects &objects,
     rv_pdklib::fx_vec3 rotation,
@@ -258,28 +304,15 @@ inline int squid_scene_world_point(rv_pdklib::ecs_world &world, rv_pdklib::ecs_i
     return RV_OK;
 }
 
-// Logs the world positions of the first target's debris and of Alkoldun: the debris stays where it is while the tilt
-// changes.
+// Logs the world position of Alkoldun: it moves with the tilt about the dome centre.
 inline int squid_scene_log(rv_pdklib::ecs_world &world, const squid_scene_objects &objects)
 {
-    rv_pdklib::rv_vec3 debris{};
-    const int debris_code = squid_scene_world_point(world, objects.debris[0], debris);
-    if (debris_code != RV_OK) {
-        return debris_code;
-    }
     rv_pdklib::rv_vec3 alkoldun{};
     const int alkoldun_code = squid_scene_world_point(world, objects.alkoldun, alkoldun);
     if (alkoldun_code != RV_OK) {
         return alkoldun_code;
     }
-    RV_LOG_INFO(SQUID_SCENE_TAG,
-        "world debris ({:+.3f}, {:+.3f}, {:+.3f}) alkoldun ({:+.3f}, {:+.3f}, {:+.3f})",
-        debris.x,
-        debris.y,
-        debris.z,
-        alkoldun.x,
-        alkoldun.y,
-        alkoldun.z);
+    RV_LOG_INFO(SQUID_SCENE_TAG, "world alkoldun ({:+.3f}, {:+.3f}, {:+.3f})", alkoldun.x, alkoldun.y, alkoldun.z);
     return RV_OK;
 }
 
