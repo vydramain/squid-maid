@@ -93,6 +93,23 @@ constexpr auto SQUID_SOUND_RULES = std::to_array<squid_sound_rule>({
     { squid_frame_event::calibrate, squid_sound_event::calibrate },
 });
 
+// The flags, the events and the rules must agree: one flag per event, and every event has a rule.
+static_assert(static_cast<std::size_t>(squid_frame_event::finish) + 1 == SQUID_FRAME_EVENT_COUNT,
+    "SQUID_FRAME_EVENT_COUNT must equal the number of squid_frame_event values");
+constexpr bool squid_sound_rules_cover_events()
+{
+    for (std::size_t event = 0; event < SQUID_FRAME_EVENT_COUNT; ++event) {
+        const auto covers = [event](const squid_sound_rule &rule) {
+            return static_cast<std::size_t>(rule.event) == event;
+        };
+        if (std::none_of(SQUID_SOUND_RULES.begin(), SQUID_SOUND_RULES.end(), covers)) {
+            return false;
+        }
+    }
+    return true;
+}
+static_assert(squid_sound_rules_cover_events(), "SQUID_SOUND_RULES needs a rule for every squid_frame_event");
+
 const squid_sound_rule *sound_rule(const squid_frame_flags &happened)
 {
     const auto it = std::find_if(SQUID_SOUND_RULES.begin(), SQUID_SOUND_RULES.end(), [&happened](const squid_sound_rule &rule) {
@@ -154,6 +171,7 @@ public:
         note(squid_game_step(game_, state, abilities, dt));
         note(sound_changes(phase_before, hits_before, happened));
         note(squid_orbit_tilt(game_.input.smoothed.x_deg, game_.input.smoothed.z_deg, rotation_));
+        trail_update();
         if (scene_ready_) {
             note(squid_scene_pose(world_, scene_, rotation_, game_.orbit));
         }
@@ -247,6 +265,33 @@ private:
         return squid_sound_play(pdk_, sound_, rule->sound);
     }
 
+    // One trail sample per frame in play, the world position of Alkoldun. Pause keeps the samples: the orbit stands still,
+    // so the trail does not stretch when play resumes. Prepare and ready clear them: restart resets the orbit to its start.
+    void trail_update()
+    {
+        if (game_.phase == squid_phase::prepare || game_.phase == squid_phase::ready) {
+            trail_count_ = 0;
+            trail_head_ = 0;
+            return;
+        }
+        if (game_.phase != squid_phase::play) {
+            return;
+        }
+        trail_ring_[static_cast<std::size_t>(trail_head_)] = squid_orbit_position(game_.orbit, rotation_);
+        trail_head_ = (trail_head_ + 1) % SQUID_TRAIL_POINTS;
+        trail_count_ = std::min(trail_count_ + 1, SQUID_TRAIL_POINTS);
+    }
+
+    // Copies the trail oldest sample first into samples; returns how many it holds. The newest sits before the head.
+    int trail_snapshot(squid_trail_samples &samples) const
+    {
+        for (int k = 0; k < trail_count_; ++k) {
+            const int index = (trail_head_ - trail_count_ + k + SQUID_TRAIL_POINTS) % SQUID_TRAIL_POINTS;
+            samples[static_cast<std::size_t>(k)] = trail_ring_[static_cast<std::size_t>(index)];
+        }
+        return trail_count_;
+    }
+
     void log_state()
     {
         RV_LOG_INFO(SQUID_MAID_TAG,
@@ -287,7 +332,15 @@ private:
             return;
         }
         draw_step("orbit", squid_draw_ring(cg, cv, rotation_));
+        squid_trail_samples samples{};
+        const int trail_count = trail_snapshot(samples);
+        draw_step("trail", squid_draw_trail(cg, cv, samples, trail_count));
         draw_step("cross", squid_draw_cross(cg, cv));
+        // Free mode has no active target; the sequence's active index is SQUID_SEQUENCE_NONE once the round is over.
+        if (!game_.free_mode && game_.sequence.active != SQUID_SEQUENCE_NONE && game_.sequence.active < SQUID_TARGET_COUNT) {
+            const rv_pdklib::rv_vec3 target = game_.targets[static_cast<std::size_t>(game_.sequence.active)].position;
+            draw_step("target", squid_draw_target(cg, cv, target, game_.time_s));
+        }
         if (font_ready_) {
             draw_step("text", squid_draw_text(cv, font_style(), game_.input.smoothed, sensor_));
         }
@@ -319,6 +372,10 @@ private:
     squid_sound sound_;
     // The orbit's tilt, taken from the shown tilt each frame; kept when the conversion refuses.
     rv_pdklib::fx_vec3 rotation_{};
+    // Alkoldun's trail: a ring of world positions; trail_head_ is the next write, trail_count_ the samples held.
+    squid_trail_samples trail_ring_{};
+    int trail_head_ = 0;
+    int trail_count_ = 0;
     rv_pdklib::ecs_world world_;
     squid_scene_objects scene_;
     bool scene_ready_ = false;
