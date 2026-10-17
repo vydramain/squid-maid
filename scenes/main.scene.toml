@@ -1,8 +1,7 @@
 # The scene of the squid-maid prototype. The tilt root sits at the dome centre
 # (SQUID_DOME_CENTER in src/squid-params.hpp, -49 -3990 -242 in Q20.12) with scale 1 and no parent; the disc writes its
 # rotation each frame, so the structure tilts about the dome centre. The children are offset by minus that centre, so with
-# no tilt every object except Alkoldun is where it was when the root sat at the origin. Alkoldun's position is rewritten
-# each frame by the orbit code, uncompensated, so it is shifted by the dome centre until that code is removed.
+# no tilt every object is where it was when the root sat at the origin.
 # Values are Q20.12 (4096 = 1.0).
 # The three elephants stand in a row (x = -1.1, 0, 1.1; z = 0) on the turtle, whose shell is scaled 2.5 x 0.3 x 1.4
 # (its top at y = -1.85). Each foot sits 0.00 to 0.03 into the shell, none hangs over it. The feet are at y = -1.9 and
@@ -38,17 +37,6 @@ texture = ""
 [[component]]
 object = "7a500002"
 name = "decal"
-
-[[object]]
-id = "7a500003"
-name = "alkoldun"
-parent = "7a500001"
-kind = "mesh"
-position = [24625, 3990, 242]
-rotation = [0, 0, 0]
-scale = [1024, 1024, 1024]
-mesh = "ball.gltf"
-texture = ""
 
 [[object]]
 id = "7a500021"

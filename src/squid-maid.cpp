@@ -23,7 +23,6 @@
 #include "squid-orbit.hpp"
 #include "squid-params.hpp"
 #include "squid-scene.hpp"
-#include "squid-sequence.hpp"
 #include "squid-sound.hpp"
 #include "squid-state.hpp"
 
@@ -181,9 +180,9 @@ public:
         if (happened[static_cast<std::size_t>(squid_frame_event::start)]) {
             note(log_config(sensor_));
         }
-        note(squid_orbit_tilt(game_.input.smoothed.x_deg, game_.input.smoothed.z_deg, rotation_));
+        note(squid_scene_tilt(game_.input.smoothed.x_deg, game_.input.smoothed.z_deg, rotation_));
         if (scene_ready_) {
-            note(squid_scene_pose(world_, scene_, rotation_, game_.orbit));
+            note(squid_scene_pose(world_, scene_, rotation_));
         }
 
         if (frame_index_ % SQUID_LOG_PERIOD_FRAMES == 0) {
@@ -397,7 +396,7 @@ private:
 
     squid_game game_;
     squid_sound sound_;
-    // The orbit's tilt, taken from the shown tilt each frame; kept when the conversion refuses.
+    // The tilt root's rotation, taken from the shown tilt each frame; kept when the conversion refuses.
     rv_pdklib::fx_vec3 rotation_{};
     // The tilt the input asks for this frame, shown in the debug panel beside the shown tilt.
     squid_tilt target_tilt_{};

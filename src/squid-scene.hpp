@@ -1,16 +1,15 @@
 #pragma once
 
-// The scene of the squid game in the ECS: the tilt root at the dome centre with the
-// structure and Alkoldun as its children, and the ball body template that bodies are loaded from under the root. The
-// disc writes the pose each frame; the ECS transform turns it into world matrices.
+// The scene of the squid game in the ECS: the tilt root at the dome centre with the structure as its children, and
+// the ball body template that bodies are loaded from under the root. The disc writes the tilt each frame; the ECS
+// transform turns it into world matrices.
 
 #include <array>
 #include <cmath>
 #include <cstdint>
 
-#include "squid-orbit.hpp"
+#include "squid-input.hpp"
 #include "squid-params.hpp"
-#include "squid-draw.hpp"
 #include "pdk/cd/rv_cd.h"
 #include "pdk/cg/rv_cg.h"
 #include "pdk/rv_err.h"
@@ -20,6 +19,7 @@
 #include "pdklib/rv_ecs/rv_ecs_loads.hpp"
 #include "pdklib/rv_ecs/rv_ecs_transform.hpp"
 #include "pdklib/rv_logs/rv_logs.hpp"
+#include "pdklib/rv_math/rv_fx.hpp"
 
 namespace squid
 {
@@ -32,14 +32,12 @@ inline constexpr const char *SQUID_SCENE_TAG = "scene";
 inline constexpr const char *SQUID_SCENE_FILE = "main.scene.toml";
 inline constexpr const char *SQUID_SCENE_BODY_FILE = "body.scene.toml";
 inline constexpr const char *SQUID_SCENE_TILT_NAME = "tilt";
-inline constexpr const char *SQUID_SCENE_ALKOLDUN_NAME = "alkoldun";
 // The frame system that sets the camera of the scene's models; it is registered under this name.
 inline constexpr const char *SQUID_SCENE_CAMERA_SYSTEM = "squid-camera";
 
-// Entities of the scene objects the disc moves or reports.
+// Entity of the scene object the disc moves or reports.
 struct squid_scene_objects {
     rv_pdklib::ecs_id tilt{};
-    rv_pdklib::ecs_id alkoldun{};
 };
 
 // Entity of the object with the name, in load order. A missing object is an error; the name is in the log.
@@ -102,18 +100,32 @@ inline int squid_scene_fx_point(rv_pdklib::rv_vec3 point, rv_pdklib::fx_vec3 &ou
     return RV_OK;
 }
 
-// Finds the objects and checks the tilt root: at the dome centre with scale 1 and no parent. The old orbit code
-// (squid_orbit_position) still assumes the origin, so Alkoldun and the orbit lines are shifted by the dome centre until
-// the orbit code is removed. Any refusal is returned with its cause logged.
+// Tilt angles in degrees to the tilt root's Q20.12 rotation (x, 0, z); rotation is untouched on error.
+inline int squid_scene_tilt(float tilt_x_deg, float tilt_z_deg, rv_pdklib::fx_vec3 &rotation)
+{
+    rv_pdklib::fx tilt_x{};
+    rv_pdklib::fx tilt_z{};
+    const int x_code = rv_pdklib::fx_from_double(tilt_x_deg, tilt_x);
+    if (x_code != RV_OK) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "tilt x {} deg is outside the Q20.12 range; rotation kept", tilt_x_deg);
+        return x_code;
+    }
+    const int z_code = rv_pdklib::fx_from_double(tilt_z_deg, tilt_z);
+    if (z_code != RV_OK) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "tilt z {} deg is outside the Q20.12 range; rotation kept", tilt_z_deg);
+        return z_code;
+    }
+    rotation = rv_pdklib::fx_vec3{ tilt_x, 0, tilt_z };
+    return RV_OK;
+}
+
+// Finds the tilt root and checks it: at the dome centre with scale 1 and no parent. Any refusal is returned with its
+// cause logged.
 inline int squid_scene_check(rv_pdklib::ecs_world &world, squid_scene_objects &objects)
 {
     const int tilt_code = squid_scene_find(world, SQUID_SCENE_TILT_NAME, objects.tilt);
     if (tilt_code != RV_OK) {
         return tilt_code;
-    }
-    const int alkoldun_code = squid_scene_find(world, SQUID_SCENE_ALKOLDUN_NAME, objects.alkoldun);
-    if (alkoldun_code != RV_OK) {
-        return alkoldun_code;
     }
     const rv_pdklib::ecs_component_transform *tilt =
         rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, objects.tilt);
@@ -251,68 +263,30 @@ inline int squid_scene_body_unload(rv_pdklib::ecs_world &world, uint32_t load_nu
     return RV_OK;
 }
 
-// The orbit point without the tilt: Alkoldun's position in the tilt root's space.
-inline int squid_scene_orbit_local(const squid_orbit &orbit, rv_pdklib::fx_vec3 &out)
-{
-    const rv_pdklib::rv_vec3 point{
-        static_cast<float>(SQUID_ORBIT_RADIUS * std::cos(orbit.phase_rad)),
-        0.0f,
-        static_cast<float>(SQUID_ORBIT_RADIUS * std::sin(orbit.phase_rad)),
-    };
-    const int point_code = squid_scene_fx_point(point, out);
-    if (point_code != RV_OK) {
-        return point_code;
-    }
-    return RV_OK;
-}
-
-// Writes the shown tilt to the root and the bare orbit point to Alkoldun. The ECS transform turns them into world
-// matrices, so Alkoldun's world position is squid_orbit_position shifted by the dome centre (the root's position), up to
-// the Q20.12 rounding of the local point. Accepted until the orbit code is removed.
-inline int squid_scene_pose(rv_pdklib::ecs_world &world,
-    const squid_scene_objects &objects,
-    rv_pdklib::fx_vec3 rotation,
-    const squid_orbit &orbit)
+// Writes the shown tilt to the tilt root; the ECS transform turns it into the structure's world matrices.
+inline int squid_scene_pose(rv_pdklib::ecs_world &world, const squid_scene_objects &objects, rv_pdklib::fx_vec3 rotation)
 {
     rv_pdklib::ecs_component_transform *tilt =
         rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, objects.tilt);
-    rv_pdklib::ecs_component_transform *alkoldun =
-        rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, objects.alkoldun);
-    if (tilt == nullptr || alkoldun == nullptr) {
-        RV_LOG_ERR(SQUID_SCENE_TAG, "scene object lost its transform; pose not written");
+    if (tilt == nullptr) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "'{}' object lost its transform; pose not written", SQUID_SCENE_TILT_NAME);
         return RV_ERR_NOENT;
     }
-    rv_pdklib::fx_vec3 local{};
-    const int local_code = squid_scene_orbit_local(orbit, local);
-    if (local_code != RV_OK) {
-        return local_code;
-    }
     tilt->rotation = rotation;
-    alkoldun->position = local;
     return RV_OK;
 }
 
-// World position of the entity's origin, from its transform chain; the frame need not have run.
-inline int squid_scene_world_point(rv_pdklib::ecs_world &world, rv_pdklib::ecs_id id, rv_pdklib::rv_vec3 &out)
-{
-    rv_pdklib::rv_mat4 matrix{};
-    const int code = rv_pdklib::ecs_transform_world(world, id, matrix);
-    if (code != RV_OK) {
-        return code;
-    }
-    out = rv_pdklib::rv_mat4_mul_point(matrix, rv_pdklib::rv_vec3{ 0.0f, 0.0f, 0.0f });
-    return RV_OK;
-}
-
-// Logs the world position of Alkoldun: it moves with the tilt about the dome centre.
+// Logs the tilt root's rotation in degrees: the tilt the structure is drawn at.
 inline int squid_scene_log(rv_pdklib::ecs_world &world, const squid_scene_objects &objects)
 {
-    rv_pdklib::rv_vec3 alkoldun{};
-    const int alkoldun_code = squid_scene_world_point(world, objects.alkoldun, alkoldun);
-    if (alkoldun_code != RV_OK) {
-        return alkoldun_code;
+    const rv_pdklib::ecs_component_transform *tilt =
+        rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, objects.tilt);
+    if (tilt == nullptr) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "'{}' object lost its transform; not logged", SQUID_SCENE_TILT_NAME);
+        return RV_ERR_NOENT;
     }
-    RV_LOG_INFO(SQUID_SCENE_TAG, "world alkoldun ({:+.3f}, {:+.3f}, {:+.3f})", alkoldun.x, alkoldun.y, alkoldun.z);
+    const rv_pdklib::rv_vec3 rotation = rv_pdklib::fx_vec3_to_float(tilt->rotation);
+    RV_LOG_INFO(SQUID_SCENE_TAG, "tilt rotation x {:+.2f} z {:+.2f} deg", rotation.x, rotation.z);
     return RV_OK;
 }
 
