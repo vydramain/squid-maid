@@ -9,17 +9,11 @@
 namespace squid
 {
 
-// Constant HUD: the goal counter (hits, total) and the round clock in seconds.
-constexpr std::string_view SQUID_TEXT_GOAL = "Цель {} / {}";
-constexpr std::string_view SQUID_TEXT_TIME = "{:.1f} с";
-constexpr std::string_view SQUID_TEXT_FREE_MODE = "свободный режим";
-
 // Phase labels, in squid_phase order.
 constexpr std::string_view SQUID_TEXT_PHASE_PREPARE = "подготовка";
 constexpr std::string_view SQUID_TEXT_PHASE_READY = "готовность";
 constexpr std::string_view SQUID_TEXT_PHASE_PLAY = "игра";
 constexpr std::string_view SQUID_TEXT_PHASE_PAUSE = "пауза";
-constexpr std::string_view SQUID_TEXT_PHASE_RESULT = "результат";
 
 // Hints. Buttons are the pad's names; the keys in brackets are the console window's (rv_pcwindow_sdl3.cpp).
 constexpr std::string_view SQUID_TEXT_INTRO = "Наклоняй контроллер, чтобы менять орбиту. Коснись отмеченного шарика.";
@@ -30,8 +24,6 @@ constexpr std::string_view SQUID_TEXT_HINT_READY =
 constexpr std::string_view SQUID_TEXT_HINT_PLAY = "Правый бампер (E): пауза";
 constexpr std::string_view SQUID_TEXT_HINT_PAUSE =
     "Правый бампер (E): продолжить  NORTH (V): перекалибровка  VIEW (Tab): рестарт";
-constexpr std::string_view SQUID_TEXT_RESULT = "Готово: {} / {} за {:.1f} с";
-constexpr std::string_view SQUID_TEXT_HINT_RESULT = "VIEW (Tab): повтор";
 
 // Debug panel. Axis names and source names are the labels the tilt readout uses.
 constexpr std::string_view SQUID_TEXT_DEBUG_TITLE = "Отладка";
@@ -43,8 +35,5 @@ constexpr std::string_view SQUID_TEXT_DEBUG_TARGET = "Наклон цель: {} 
 constexpr std::string_view SQUID_TEXT_DEBUG_ACTUAL = "Наклон факт: {} {:+.1f}  {} {:+.1f}";
 constexpr std::string_view SQUID_TEXT_DEBUG_SOURCE = "Источник: {}";
 constexpr std::string_view SQUID_TEXT_DEBUG_PHASE = "Фаза игры: {}";
-constexpr std::string_view SQUID_TEXT_DEBUG_ORBIT = "Фаза орбиты: {:.3f} витка";
-constexpr std::string_view SQUID_TEXT_DEBUG_LAP = "Время круга: {:.2f} с";
-constexpr std::string_view SQUID_TEXT_DEBUG_RADII = "Радиусы: Алколдун {:.2f}, мусор {:.2f}";
 
 } // namespace squid
