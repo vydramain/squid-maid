@@ -8,6 +8,9 @@ sources = ["src/*.cpp"]
 [assets]
 files = ["scenes/*.scene.toml"]
 
+[sounds]
+files = ["assets/snd/*.wav"]
+
 [textures]
 # No separate textures yet; format is still required by [models].
 files = []
