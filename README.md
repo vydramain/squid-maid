@@ -1,20 +1,27 @@
-# Steam Deck Bullet Hell Game
+# squid-maid
 
-🚀 A fast-paced bullet hell game built with **Godot Engine** and **C++**, designed and optimized for the **Steam Deck**. The game blends elements of **platformers** and **top-down shooters**, with a focus on responsive controls, tight gameplay, and satisfying visual feedback.
+A test prototype (v0.1) of a single-player game for the
+[3dmppc console](https://github.com/vydramain/3dmppc-polymer), built as a
+`.mppcdisc`. The player tilts a Steam Controller to change the orbital plane of
+a ball that keeps flying around the world, and steers it through the
+highlighted target among the grey debris balls.
 
-## 🎮 Project Vision
+The design is in [`docs/disdoc.md`](docs/disdoc.md).
 
-This project aims to deliver:
-- A **fluid bullet hell experience** with precise hitboxes and fast action.
-- A **hybrid genre** feel — possibly combining **platforming mechanics** with **top-down bullet patterns**.
-- **C++ performance** and control under the hood using Godot’s GDNative / C++ bindings.
-- **Full Steam Deck compatibility**, including controller input and optimized performance on Linux.
+## Layout
 
-## 🛠️ Tech Stack
+```
+disc.toml   the disc manifest: sources, assets and budgets for the burner
+src/        the game's C++ sources, burned per disc.toml
+scenes/     the game's scene, carried by the disc as an asset per disc.toml
+docs/       the design document
+```
 
-- **Game Engine**: [Godot Engine](https://godotengine.org/) (likely 4.x)
-- **Language**: C++ (via GDNative or Godot's GDExtension system)
-- **Target Platform**: Steam Deck (Linux, x86_64)
-- **Build System**: CMake + Godot Native Scripts
+## Burning the disc
 
-## 📦 Project Structure
+The burner `mppcburner` comes from the console repository. Build the disc
+directory into a disc image:
+
+```sh
+mppcburner build <disc-directory> -o squid-maid.mppcdisc
+```

@@ -1,52 +1,30 @@
-# Godot 4+ specific ignores
-addons/
-android/
-.godot/
-.import/
-.export/
-*.import
-*.translation
-
-# Exported binaries
-*.exe
-*.dll
-*.so
-*.dylib
-*.pck
-*.zip
-
-# Godot build output
-bin/
-
-# C++ build artifacts
+# Build output — a burned disc and the CMake project mppcburner leaves behind
+# while compiling one. Both are regenerated from what is tracked here.
 /build/
-*.o
-*.obj
-*.a
-*.lib
-*.exp
+.mppcburn/
+*.mppcdisc
+*.mppctex
+
+# Memory-card images written by the console while this disc plays
+*.mppccard
+
+# Frame dumps (--dump-frame)
+*.ppm
+
+# Run logs
+output.log
 *.log
-*.sdf
-*.suo
-*.VC.db
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-Makefile
 
-# Godot C++ bindings (godot-cpp) build artifacts
-godot-cpp/bin/
-godot-cpp/lib/
-godot-cpp/gen/
+# Sound dump left by a headless run
+sdlaudio.raw
 
-# System-specific files
-.DS_Store
-Thumbs.db
-desktop.ini
+# Baked from assets/snd/*.wav by the burner; not the source
+assets/snd/*.pcm
 
-# IDE files (optional - add based on your editor)
+# Editor / IDE
 .vscode/
 .idea/
-*.code-workspace
-compile_commands.json
+.cache/
 
+# OS
+.DS_Store
