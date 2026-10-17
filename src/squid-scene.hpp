@@ -59,13 +59,16 @@ inline int squid_scene_find(rv_pdklib::ecs_world &world, const char *name, rv_pd
     return RV_ERR_NOENT;
 }
 
-// The camera of the scene's models: looking at (0, target y, 0) from the elevation and distance of the constants.
+// The camera of the scene's models: looking at (0, target y, 0) from the azimuth, elevation and distance of the constants.
 inline void squid_scene_camera_make(rv_cg_camera &camera)
 {
     const float elevation = SQUID_CAMERA_ELEVATION_DEG * SQUID_DEG_TO_RAD;
+    const float azimuth = SQUID_CAMERA_AZIMUTH_DEG * SQUID_DEG_TO_RAD;
+    const float ground = SQUID_CAMERA_DISTANCE * std::cos(elevation);
+    const float eye_x = ground * std::sin(azimuth);
     const float eye_y = SQUID_CAMERA_TARGET_Y + SQUID_CAMERA_DISTANCE * std::sin(elevation);
-    const float eye_z = SQUID_CAMERA_DISTANCE * std::cos(elevation);
-    camera.eye = rv_cg_vec3{ 0.0f, eye_y, eye_z };
+    const float eye_z = ground * std::cos(azimuth);
+    camera.eye = rv_cg_vec3{ eye_x, eye_y, eye_z };
     camera.target = rv_cg_vec3{ 0.0f, SQUID_CAMERA_TARGET_Y, 0.0f };
     camera.up = rv_cg_vec3{ 0.0f, 1.0f, 0.0f };
     camera.fov_y = SQUID_CAMERA_FOV_DEG * SQUID_DEG_TO_RAD;

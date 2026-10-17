@@ -124,19 +124,21 @@ constexpr float SQUID_SPLIT_SEPARATION_SPEED = 0.6f;
 // Share of the game tilt that the world on screen tilts by: up to about 11.7 deg (35 / 3).
 constexpr float SQUID_VISIBLE_TILT_SHARE = 1.0f / 3.0f;
 
-// Scene camera elevation above the disc plane, in degrees; the eye sits low so the dome cap reads as an arc,
-// not a flat disc seen from the pole.
-constexpr float SQUID_CAMERA_ELEVATION_DEG = 15.0f;
+// Scene camera elevation above the disc plane, in degrees: the eye looks down from above. The azimuth below turns it
+// to the upper right corner of the scene.
+constexpr float SQUID_CAMERA_ELEVATION_DEG = 30.0f;
+
+// Scene camera azimuth in degrees: the eye's turn about the vertical axis through the look-at point; positive moves
+// the eye toward +x, the viewer's right, so the camera looks from the upper right.
+constexpr float SQUID_CAMERA_AZIMUTH_DEG = 30.0f;
 
 // Vertical field of view in degrees; the distance below is computed for it.
 constexpr float SQUID_CAMERA_FOV_DEG = 30.0f;
 
-// Eye distance from the look-at point; the dome cap with size-4 balls and the plate stay inside the 320x240 frame
-// at a visible tilt of +-12 deg on both axes (35 / 3 = 11.7, rounded up), look-at at the origin or at y 0.6.
+// Eye distance from the look-at point. Checked on frames 8 and 128 at pitch 30: no ball leaves the 320x240 frame.
 constexpr float SQUID_CAMERA_DISTANCE = 20.5f;
 
-// Height of the look-at point above the origin, in world units. It keeps the Earth low in the frame: with the
-// structure's pose (pitch 56.7 deg) the plate normal is 15 deg off the ray from the eye to the plate centre.
+// Height of the look-at point above the origin, in world units; raised so the Earth sits low in the frame.
 constexpr float SQUID_CAMERA_TARGET_Y = 0.6f;
 
 // Clip planes. The dome sphere with size-4 balls lies about 16 to 26 from the eye; near 8 and far 40 cut none of it.

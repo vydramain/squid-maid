@@ -1,7 +1,7 @@
 # The scene of the squid-maid prototype. The tilt root sits at the dome centre
 # (SQUID_DOME_CENTER in src/squid-params.hpp, -49 -3990 -242 in Q20.12) with scale 1 and no parent; the disc writes its
-# rotation each frame, so the whole posed dome tilts with the game. Under the tilt root, pose_pitch tilts 56.7 deg
-# toward the camera and pose_yaw turns 30 deg about the plate normal, both at scale 1; two groups, because one group
+# rotation each frame, so the whole posed dome tilts with the game. Under the tilt root, pose_pitch tilts 30 deg
+# toward the viewer's side and pose_yaw turns 30 deg about the plate normal, both at scale 1; two groups, because one group
 # would apply the yaw after the pitch. The balls load under pose_yaw: they take the pose rotation, not the scale. The
 # structure hangs under pose_scale, which scales it 1.25 about the dome centre; the dome radius is sized for that.
 # The children are offset by minus the dome centre, so the scale turns and scales them about the dome centre.
@@ -30,7 +30,7 @@ name = "pose_pitch"
 parent = "7a500001"
 kind = "group"
 position = [0, 0, 0]
-rotation = [232243, 0, 0]
+rotation = [122880, 0, 0]
 scale = [4096, 4096, 4096]
 mesh = ""
 texture = ""
