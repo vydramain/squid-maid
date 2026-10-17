@@ -7,9 +7,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <format>
 #include <numbers>
-#include <string>
 #include <vector>
 
 #include "squid-input.hpp"
@@ -81,19 +79,12 @@ constexpr float SQUID_DRAW_CROSS_HALF_LEN = 0.5f;
 // The vertex coordinates are int16; a projected point beyond that range is clamped, not wrapped.
 constexpr float SQUID_DRAW_COORD_LIMIT = 32767.0f;
 
-constexpr const char *SQUID_DRAW_AXIS_X = "X";
-constexpr const char *SQUID_DRAW_AXIS_Z = "Z";
-constexpr const char *SQUID_DRAW_SOURCE_SENSOR = "source sensor";
-constexpr const char *SQUID_DRAW_SOURCE_RESERVE = "source reserve";
-
-// Text sits in the top-left corner. The font is 8x8 cells, so a row step of 10 leaves a 2-pixel gap.
-constexpr int SQUID_DRAW_TEXT_X = 4;
-constexpr int SQUID_DRAW_TEXT_Y = 4;
-constexpr int SQUID_DRAW_TEXT_ROW_STEP = 10;
-
 // Integer pixel multiplier of the font: 1 draws each 8x8 glyph cell over 8x8 pixels; a fractional scale gives stems of
 // uneven width.
 constexpr int SQUID_DRAW_FONT_SCALE = 1;
+
+// Glyph blocks of the font atlas: ASCII plus Cyrillic, the HUD's text in squid-texts.hpp (about 5.5 KiB of video memory).
+constexpr uint32_t SQUID_DRAW_FONT_BLOCKS = rv_pdklib::rv_font_block_cyrillic;
 
 // Clamps a coordinate to the int16 range of a vertex.
 inline int16_t squid_draw_coord(float value)
@@ -297,27 +288,6 @@ inline int squid_draw_cross(rv_cg *cg, rv_cv *cv)
     return RV_OK;
 }
 
-// The two angles and the source, one row each. Returns the first refused put, or RV_OK.
-inline int squid_draw_text(rv_cv *cv, rv_pdklib::rv_font_style style, squid_tilt tilt, bool sensor)
-{
-    const std::string angles =
-        std::format("{} {:+.1f} {} {:+.1f}", SQUID_DRAW_AXIS_X, tilt.x_deg, SQUID_DRAW_AXIS_Z, tilt.z_deg);
-    const char *source = sensor ? SQUID_DRAW_SOURCE_SENSOR : SQUID_DRAW_SOURCE_RESERVE;
-    int64_t put_code = RV_OK;
-    const auto sink = [cv, &put_code](const rv_primitive &primitive) {
-        const int64_t code = rv_cv_frame_put(cv, &primitive);
-        if (code != RV_OK && put_code == RV_OK) {
-            put_code = code;
-        }
-    };
-    rv_pdklib::rv_font_draw(style, SQUID_DRAW_TEXT_X, SQUID_DRAW_TEXT_Y, angles, sink);
-    rv_pdklib::rv_font_draw(style, SQUID_DRAW_TEXT_X, SQUID_DRAW_TEXT_Y + SQUID_DRAW_TEXT_ROW_STEP, source, sink);
-    if (put_code != RV_OK) {
-        return static_cast<int>(put_code);
-    }
-    return RV_OK;
-}
-
 // Frees one video asset. A failed free is logged here with its code and returned to the caller.
 inline int squid_draw_release(rv_cv *cv, int64_t addr)
 {
@@ -354,8 +324,9 @@ inline int squid_draw_upload(rv_cv *cv, const rv_texture &texture, int64_t size,
 // the atlas it has. Each failure is logged where it happens.
 inline int squid_draw_font_load(rv_cv *cv, int64_t &addr_font, int64_t &addr_palette)
 {
-    std::vector<uint8_t> atlas(rv_pdklib::rv_font_atlas_size, 0);
-    const int atlas_code = rv_pdklib::rv_font_build_atlas(atlas.data(), atlas.size());
+    const std::size_t atlas_size = rv_pdklib::rv_font_atlas_size_for(SQUID_DRAW_FONT_BLOCKS);
+    std::vector<uint8_t> atlas(atlas_size, 0);
+    const int atlas_code = rv_pdklib::rv_font_build_atlas(atlas.data(), atlas.size(), SQUID_DRAW_FONT_BLOCKS);
     if (atlas_code != RV_OK) {
         RV_LOG_WARN(SQUID_DRAW_TAG, "font atlas not built, rv_err {}", atlas_code);
         return atlas_code;
@@ -367,10 +338,9 @@ inline int squid_draw_font_load(rv_cv *cv, int64_t &addr_font, int64_t &addr_pal
         return palette_code;
     }
 
-    const rv_texture atlas_texture = rv_pdklib::rv_font_atlas_texture(atlas.data());
+    const rv_texture atlas_texture = rv_pdklib::rv_font_atlas_texture(atlas.data(), SQUID_DRAW_FONT_BLOCKS);
     int64_t font_asset = 0;
-    const int atlas_upload =
-        squid_draw_upload(cv, atlas_texture, static_cast<int64_t>(rv_pdklib::rv_font_atlas_size), "font atlas", font_asset);
+    const int atlas_upload = squid_draw_upload(cv, atlas_texture, static_cast<int64_t>(atlas_size), "font atlas", font_asset);
     if (atlas_upload != RV_OK) {
         return atlas_upload;
     }

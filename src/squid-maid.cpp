@@ -2,8 +2,11 @@
 // the debug view (docs/disdoc.md, 6, 7, 9, 11, 15.1, 15.2).
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <format>
+#include <string>
 
 #include "pdk/cg/rv_cg.h"
 #include "pdk/cio/rv_cio.h"
@@ -17,10 +20,12 @@
 #include "pdklib/rv_font/rv_font.hpp"
 #include "pdklib/rv_logs/rv_logs.hpp"
 #include "squid-draw.hpp"
+#include "squid-hud.hpp"
 #include "squid-input.hpp"
 #include "squid-orbit.hpp"
 #include "squid-params.hpp"
 #include "squid-scene.hpp"
+#include "squid-sequence.hpp"
 #include "squid-sound.hpp"
 #include "squid-state.hpp"
 
@@ -149,6 +154,8 @@ public:
         scene_ready_ = scene_code == RV_OK;
         // The loader logs the cause; without a font the view draws the orbit but no text.
         font_ready_ = squid_draw_font_load(rv_pdko_cv(pdk_), addr_font_, addr_palette_) == RV_OK;
+        const uint64_t abilities = rv_cio_iport_abilities(rv_pdko_cio(pdk_), 0);
+        log_config((abilities & RV_ISOURCE_GYRO_MOVE) != 0);
         return RV_OK;
     }
 
@@ -167,9 +174,20 @@ public:
         const squid_phase phase_before = game_.phase;
         const int hits_before = game_.sequence.hits;
         squid_frame_flags happened{};
+        // The debug panel's switch: each press of the left bumper flips it; it starts off.
+        const bool bumper = (pressed & RV_ISOURCE_BUMPER_LEFT) != 0;
+        debug_panel_ = debug_panel_ != bumper;
         note(press(pressed, state, abilities, happened));
         note(squid_game_step(game_, state, abilities, dt));
+        // A frame the input refused may carry a non-finite stick or quaternion: the panel keeps the last target then.
+        const squid_tilt target = target_tilt(state);
+        if (std::isfinite(target.x_deg) && std::isfinite(target.z_deg)) {
+            target_tilt_ = target;
+        }
         note(sound_changes(phase_before, hits_before, happened));
+        if (happened[static_cast<std::size_t>(squid_frame_event::start)]) {
+            log_config(sensor_);
+        }
         note(squid_orbit_tilt(game_.input.smoothed.x_deg, game_.input.smoothed.z_deg, rotation_));
         trail_update();
         if (scene_ready_) {
@@ -310,6 +328,56 @@ private:
             last_refusal_);
     }
 
+    // The tilt the input asks for this frame; the shown tilt follows it smoothed.
+    squid_tilt target_tilt(const rv_istate &state) const
+    {
+        if (sensor_) {
+            return squid_input_sensor_target(game_.input.neutral, state.motion);
+        }
+        // A zero step moves no key and returns the target; the copy keeps the game's keys as they are.
+        squid_input probe = game_.input;
+        return squid_input_reserve_step(probe, state, 0.0f);
+    }
+
+    squid_hud_round hud_round() const
+    {
+        return squid_hud_round{ game_.phase, game_.sequence.hits, SQUID_TARGET_COUNT, game_.time_s, game_.free_mode };
+    }
+
+    squid_hud_debug hud_debug() const
+    {
+        return squid_hud_debug{ target_tilt_,
+            game_.input.smoothed,
+            sensor_,
+            game_.orbit.phase_rad / SQUID_ORBIT_TAU_RAD,
+            SQUID_ORBIT_PERIOD_S,
+            SQUID_ALKOLDUN_RADIUS,
+            SQUID_DEBRIS_RADIUS };
+    }
+
+    // Scene parameters, target order and input source: what a report needs to reproduce a round (disdoc 12).
+    void log_config(bool sensor) const
+    {
+        RV_LOG_INFO(SQUID_MAID_TAG,
+            "scene: orbit radius {:.2f}, period {:.1f} s, radii alkoldun {:.2f} debris {:.2f}, tilt limit {:.0f} deg, "
+            "full input at {:.0f} deg, dead zone {:.0f} deg, smoothing {:.2f} s, source {}",
+            SQUID_ORBIT_RADIUS,
+            SQUID_ORBIT_PERIOD_S,
+            SQUID_ALKOLDUN_RADIUS,
+            SQUID_DEBRIS_RADIUS,
+            SQUID_TILT_LIMIT_DEG,
+            SQUID_FULL_INPUT_TILT_DEG,
+            SQUID_DEAD_ZONE_DEG,
+            SQUID_SMOOTHING_S,
+            sensor ? "sensor" : "reserve");
+        std::string order;
+        for (const squid_target_pair &pair : SQUID_TARGET_PAIRS) {
+            order +=
+                std::format(" {:+.0f}/{:+.0f}@{:.3f}", pair.tilt_x_deg, pair.tilt_z_deg, pair.phase_rad / SQUID_ORBIT_TAU_RAD);
+        }
+        RV_LOG_INFO(SQUID_MAID_TAG, "targets (tilt x/z deg @ orbit turn):{}", order);
+    }
+
     // The scene's models, in the ECS frame; the debug view is drawn over them.
     void draw_scene()
     {
@@ -342,7 +410,7 @@ private:
             draw_step("target", squid_draw_target(cg, cv, target, game_.time_s));
         }
         if (font_ready_) {
-            draw_step("text", squid_draw_text(cv, font_style(), game_.input.smoothed, sensor_));
+            draw_step("hud", squid_hud_draw(cv, font_style(), hud_round(), hud_debug(), debug_panel_));
         }
     }
 
@@ -365,13 +433,21 @@ private:
 
     rv_pdklib::rv_font_style font_style() const
     {
-        return rv_pdklib::rv_font_style_make(addr_font_, addr_palette_, SQUID_DRAW_TEXT_DEPTH, SQUID_DRAW_FONT_SCALE);
+        return rv_pdklib::rv_font_style_make(addr_font_,
+            addr_palette_,
+            SQUID_DRAW_TEXT_DEPTH,
+            SQUID_DRAW_FONT_SCALE,
+            SQUID_DRAW_FONT_BLOCKS);
     }
 
     squid_game game_;
     squid_sound sound_;
     // The orbit's tilt, taken from the shown tilt each frame; kept when the conversion refuses.
     rv_pdklib::fx_vec3 rotation_{};
+    // The tilt the input asks for this frame, shown in the debug panel beside the shown tilt.
+    squid_tilt target_tilt_{};
+    // Left bumper toggles the debug panel; off at start.
+    bool debug_panel_ = false;
     // Alkoldun's trail: a ring of world positions; trail_head_ is the next write, trail_count_ the samples held.
     squid_trail_samples trail_ring_{};
     int trail_head_ = 0;
