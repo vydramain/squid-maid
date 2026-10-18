@@ -74,12 +74,10 @@ struct squid_body {
     float hover_period = SQUID_HOVER_PERIOD_MIN_S;
     // Bottles only: set at birth when Alkoldun's hit split the heaviest ball; no ball reads it.
     bool marked = false;
-    // Seconds since birth, advanced for every body; only a bottle reads it (drinkable from SQUID_BOTTLE_FRESH_S).
-    float age = 0;
 };
 
 // Outcome of a touching pair: which bodies split, and which one is absorbed. Every touching pair that is not an
-// absorb gets the elastic response in the physics step; split flags apply in addition, the division itself is the
+// absorb or a drink gets the elastic response in the physics step; split flags apply in addition, the division itself is the
 // physics step's. An absorbed body is removed and its mass (always 1) goes to the other, so a mass never exceeds 8.
 struct squid_pair_outcome {
     bool split_a = false;
@@ -230,7 +228,8 @@ inline int squid_pair_resolve(const squid_body &a, const squid_body &b, float v,
         RV_LOG_ERR(SQUID_BODY_TAG, "pair refused: relative speed {} is negative or not finite", v);
         return RV_ERR_INVAL;
     }
-    // A bottle never splits or absorbs: any contact with it is a plain bounce, so the table lists no row for it.
+    // A bottle never splits or absorbs, so the table lists no row for it: a contact with it bounces; Alkoldun's contact
+    // with it is a drink, checked before this.
     const bool bottle_pair = a.kind == squid_kind::bottle || b.kind == squid_kind::bottle;
     if (bottle_pair) {
         return RV_OK;

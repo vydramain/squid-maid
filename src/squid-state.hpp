@@ -313,7 +313,7 @@ inline constexpr squid_flat SQUID_SPLIT_ALL_NORMAL{ 1.0f, 0.0f };
 // Splits every splittable ball once, in index order; the halves are appended, so none is split twice. The physics pushes
 // apart any overlap the halves make. Refused whole, with the set unchanged, when the set has no room for every split. A
 // split refused midway stops the command: splits holds the splits made, and the set holds them too. A fridge split also
-// gives an unmarked bottle, as in a contact split.
+// gives an unmarked bottle, as in a pair split, at the centre.
 inline int squid_split_all(squid_bodies &set, int &splits)
 {
     splits = 0;
