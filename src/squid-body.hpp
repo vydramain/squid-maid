@@ -34,6 +34,9 @@ static_assert(std::size(SQUID_BALL_RADIUS) == static_cast<std::size_t>(std::rang
 // Size of Alkoldun: its radius and thresholds follow size 3; it never splits, and nothing absorbs into it.
 constexpr int SQUID_ALKOLDUN_SIZE = 3;
 
+// Mass of a bottle in collisions; bottles are outside the ball mass budget, so this never enters a total.
+constexpr int SQUID_BOTTLE_MASS = 1;
+
 // Model variants chosen at birth, 0..4 (the largest size's count); display only. A smaller size takes the variant
 // modulo its own count (squid-view.hpp).
 constexpr int SQUID_MODEL_VARIANTS = 5;
@@ -43,7 +46,8 @@ inline constexpr rv_pdklib::rv_vec4 SQUID_IDENTITY_QUAT{ 0, 0, 0, 1 };
 
 enum class squid_kind : uint8_t {
     ball,
-    alkoldun
+    alkoldun,
+    bottle
 };
 
 // Position or velocity on the flat disc; x and z are the world X and Z axes.
@@ -68,6 +72,8 @@ struct squid_body {
     // Hover phase in rad and its period in s; the physics step advances the phase, the view reads it.
     float hover_phase = 0;
     float hover_period = SQUID_HOVER_PERIOD_MIN_S;
+    // Bottles only: set at birth when Alkoldun's hit split the heaviest ball; no ball reads it.
+    bool marked = false;
 };
 
 // Outcome of a touching pair: which bodies split, and which one is absorbed. Every touching pair that is not an
@@ -131,19 +137,27 @@ inline int squid_size_of_mass(int mass, int &size)
     return RV_OK;
 }
 
-// Alkoldun is always SQUID_ALKOLDUN_SIZE; a ball's size follows its mass.
+// Alkoldun is always SQUID_ALKOLDUN_SIZE; a ball's size follows its mass. A bottle has no size and is refused
+// quietly: its radius and contacts are its own (squid_body_radius, squid_pair_resolve).
 inline int squid_body_size(const squid_body &b, int &size)
 {
     if (b.kind == squid_kind::alkoldun) {
         size = SQUID_ALKOLDUN_SIZE;
         return RV_OK;
     }
+    if (b.kind == squid_kind::bottle) {
+        return RV_ERR_INVAL;
+    }
     return squid_size_of_mass(b.mass, size);
 }
 
-// Radius from the size: SQUID_BALL_RADIUS[size - 1].
+// Radius from the size: SQUID_BALL_RADIUS[size - 1]; a bottle has SQUID_BOTTLE_RADIUS.
 inline int squid_body_radius(const squid_body &b, float &radius)
 {
+    if (b.kind == squid_kind::bottle) {
+        radius = SQUID_BOTTLE_RADIUS;
+        return RV_OK;
+    }
     int size = 0;
     if (squid_body_size(b, size) != RV_OK) {
         return RV_ERR_INVAL;
@@ -180,6 +194,18 @@ inline int squid_body_alkoldun(squid_body &out, int variant, squid_flat pos)
     return squid_body_birth(out, squid_kind::alkoldun, SQUID_ALKOLDUN_MASS, variant, pos);
 }
 
+// A bottle at pos moving at vel, marked or not; mass SQUID_BOTTLE_MASS and variant 0 (display only).
+inline int squid_body_bottle(squid_body &out, squid_flat pos, squid_flat vel, bool marked)
+{
+    const int made = squid_body_birth(out, squid_kind::bottle, SQUID_BOTTLE_MASS, 0, pos);
+    if (made != RV_OK) {
+        return made;
+    }
+    out.vel = vel;
+    out.marked = marked;
+    return RV_OK;
+}
+
 // Row of a sorted size pair; null if there is none.
 inline const squid_pair_row *squid_pair_find(int lo, int hi, bool lo_alk, bool hi_alk)
 {
@@ -201,6 +227,11 @@ inline int squid_pair_resolve(const squid_body &a, const squid_body &b, float v,
     if (speed_bad) {
         RV_LOG_ERR(SQUID_BODY_TAG, "pair refused: relative speed {} is negative or not finite", v);
         return RV_ERR_INVAL;
+    }
+    // A bottle never splits or absorbs: any contact with it is a plain bounce, so the table lists no row for it.
+    const bool bottle_pair = a.kind == squid_kind::bottle || b.kind == squid_kind::bottle;
+    if (bottle_pair) {
+        return RV_OK;
     }
     int size_a = 0;
     int size_b = 0;

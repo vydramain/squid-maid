@@ -59,6 +59,12 @@ constexpr int SQUID_BEER_GOAL = 3;
 // Alkoldun's mass in smallest units: it weighs like size 3; it never splits.
 constexpr int SQUID_ALKOLDUN_MASS = 4;
 
+// Bottle collision radius in world units: the same as the smallest ball. The bottle model is made for 4/3 of it.
+constexpr float SQUID_BOTTLE_RADIUS = 0.225f;
+
+// Bottles alive at once; a fridge split with this many alive gives no bottle, and the split still happens.
+constexpr int SQUID_BOTTLE_MAX = 16;
+
 // Gravity along the tilted disc, in units/s^2; at 35 deg tilt a = 3.44 and centre to edge (4.71) without damping
 // takes 1.65 s, so the tilt is felt at once and does not throw the balls.
 constexpr float SQUID_GRAVITY = 6.0f;

@@ -156,7 +156,8 @@ inline int squid_view_update(rv_pdklib::ecs_world &world, const squid_view_pool 
     int first = RV_OK;
     for (int i = 0; i < SQUID_BODY_CAPACITY; ++i) {
         const squid_view_slot &slot = pool.slots[i];
-        const bool shown = i < bodies.count;
+        // Bottles stay hidden until the bottle view lands: a refused pose would leave the slot on a frozen model.
+        const bool shown = i < bodies.count && bodies.items[i].kind != squid_kind::bottle;
         const int hidden_code = squid_scene_body_hidden(world, slot.id, !shown);
         const int pose_code = shown ? squid_view_body_set(world, slot.id, bodies.items[i]) : RV_OK;
         const int code = hidden_code != RV_OK ? hidden_code : pose_code;
