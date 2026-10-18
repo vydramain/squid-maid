@@ -1,51 +1,36 @@
 # squid-maid
 
-A test prototype (v0.1) of a single-player game for the
-[3dmppc console](https://github.com/vydramain/3dmppc-polymer), built as a
-`.mppcdisc`. The player tilts a Steam Controller to change the orbital plane of
-a ball that keeps flying around the world, and steers it through the
-highlighted target among the grey debris balls.
+A single-player game for the [3dmppc console](https://github.com/vydramain/3dmppc-polymer), built as a
+`.mppcdisc`. The player tilts the pad to roll balls of four sizes on a dome over a flat Earth, which stands on
+three elephants and a turtle. Alkoldun hits the refrigerators for beer bottles and drinks three marked ones to win.
 
-The design is in [`docs/disdoc.md`](docs/disdoc.md).
+The in-game texts (Russian, in `src/squid-texts.hpp`) are the user guide.
 
 ## Controls
 
-Tilt the pad to steer. The pad was tested with Steam running.
-Without a gyroscope the left stick and the D-pad tilt the orbit instead.
+Pad buttons only. The names are the pad's labels, as in the in-game hints.
 
-| Button | Keyboard | Action |
+| Button | Phase | Action |
 | --- | --- | --- |
-| SOUTH | Space / Z | Calibrate while preparing, start when ready |
-| NORTH | V | Recalibrate when ready or paused |
-| EAST | X | Free mode |
-| WEST | C | Level the reserve tilt to zero |
-| VIEW | Tab | Restart; repeat after the result |
-| Right bumper | E | Pause and resume |
-| Left bumper | Q | Show or hide the debug panel |
-| MENU | Esc | Releases the disc |
+| A (SOUTH) | prepare | calibrate the neutral pose (gyroscope only) and get ready |
+| A (SOUTH) | ready | start the round |
+| Y (NORTH) | ready, pause, descent pause | recalibrate |
+| B (EAST) | ready, pause, descent pause, landed | restart |
+| X (WEST) | any | level the D-pad keys to zero; the left stick still tilts |
+| View | play, descent | pause |
+| View | pause, descent pause | resume |
+| L4 (upper left rear) | any (debug) | show or hide the debug panel |
+| L5 (lower left rear) | play, pause; debug panel open | split every ball of size 2 and up |
 
-## Round
+## Sound
 
-1. Hold the pad in a comfortable pose and press SOUTH to calibrate.
-2. Press SOUTH to start.
-3. Touch the highlighted target among the 8 targets.
-4. The result shows the targets hit and the time. Press VIEW, then SOUTH, to play again.
-
-Free mode (EAST): no active target and no hits; touching the debris is counted; the round does not end.
-
-## Layout
-
-```
-disc.toml   the disc manifest: sources, sounds, textures and models for the burner
-src/        the game's C++ sources, burned per disc.toml
-assets/     sounds and models, burned per disc.toml; models/earth.gltf uses the Earth's picture in assets/tex/
-scenes/     the game's scene, carried by the disc as an asset per disc.toml
-docs/       the design document
-```
+Effects are the WAV files in `assets/snd`. The ambient track, `assets/music/ambient.mp3`, is declared in the
+`[music]` section of `disc.toml`: the burner bakes it to PCM and the game streams it.
 
 ## Running
 
-Run the disc in a 3dmppc console with PDK 1.2 or a later 1.x; a 1.1 console refuses this disc.
+The disc needs a 3dmppc console with PDK 1.3 or a later 1.x, because of its `[music]` section. A 1.2 console
+refuses it.
 
 ```sh
 3dmppc squid-maid.mppcdisc
@@ -53,9 +38,19 @@ Run the disc in a 3dmppc console with PDK 1.2 or a later 1.x; a 1.1 console refu
 
 ## Burning the disc
 
-The burner `mppcburner` comes from the console repository. Build the disc
+The burner `mppcburner` comes from the console repository (PDK 1.3 or later 1.x). Build the disc
 directory into a disc image:
 
 ```sh
 mppcburner build <disc-directory> -o squid-maid.mppcdisc
+```
+
+## Layout
+
+```
+disc.toml   the disc manifest: sources, sounds, music, textures and models for the burner
+src/        the game's C++ sources, burned per disc.toml
+assets/     sounds (snd), ambient music (music), models, and the Earth's picture (tex, used by models/earth.gltf)
+scenes/     the game's scene, carried by the disc as an asset per disc.toml
+docs/       the v0.1 design document
 ```
