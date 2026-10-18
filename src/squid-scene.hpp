@@ -34,6 +34,9 @@ inline constexpr const char *SQUID_SCENE_BODY_FILE = "body.scene.toml";
 inline constexpr const char *SQUID_SCENE_TILT_NAME = "tilt";
 // The pose group the balls load under: it carries the structure's rotation but not its scale.
 inline constexpr const char *SQUID_SCENE_POSE_YAW_NAME = "pose_yaw";
+// The pose group that scales the structure, and the Earth plate it places; both are checked on load.
+inline constexpr const char *SQUID_SCENE_POSE_SCALE_NAME = "pose_scale";
+inline constexpr const char *SQUID_SCENE_EARTH_NAME = "earth";
 // The frame system that sets the camera of the scene's models; it is registered under this name.
 inline constexpr const char *SQUID_SCENE_CAMERA_SYSTEM = "squid-camera";
 
@@ -161,6 +164,58 @@ inline int squid_scene_check(rv_pdklib::ecs_world &world, squid_scene_objects &o
     return RV_OK;
 }
 
+// Finds the pose_scale group and the Earth and checks them against the dome: the group scales by SQUID_STRUCTURE_SCALE,
+// and the Earth sits at minus the dome centre, which is where squid_descent_plate_top takes the plate from. Any refusal
+// is returned with its cause logged.
+inline int squid_scene_check_structure(rv_pdklib::ecs_world &world)
+{
+    rv_pdklib::ecs_id scale_id{};
+    const int scale_code = squid_scene_find(world, SQUID_SCENE_POSE_SCALE_NAME, scale_id);
+    if (scale_code != RV_OK) {
+        return scale_code;
+    }
+    rv_pdklib::ecs_id earth_id{};
+    const int earth_code = squid_scene_find(world, SQUID_SCENE_EARTH_NAME, earth_id);
+    if (earth_code != RV_OK) {
+        return earth_code;
+    }
+    const rv_pdklib::ecs_component_transform *scale_group =
+        rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, scale_id);
+    const rv_pdklib::ecs_component_transform *earth =
+        rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, earth_id);
+    if (scale_group == nullptr || earth == nullptr) {
+        RV_LOG_ERR(SQUID_SCENE_TAG,
+            "'{}' or '{}' object has no transform",
+            SQUID_SCENE_POSE_SCALE_NAME,
+            SQUID_SCENE_EARTH_NAME);
+        return RV_ERR_NOENT;
+    }
+    const float s = SQUID_STRUCTURE_SCALE;
+    rv_pdklib::fx_vec3 want_scale{};
+    const int want_scale_code = squid_scene_fx_point(rv_pdklib::rv_vec3{ s, s, s }, want_scale);
+    if (want_scale_code != RV_OK) {
+        return want_scale_code;
+    }
+    rv_pdklib::fx_vec3 want_earth{};
+    const int want_earth_code =
+        squid_scene_fx_point(rv_pdklib::rv_vec3{ -SQUID_DOME_CENTER_X, -SQUID_DOME_CENTER_Y, -SQUID_DOME_CENTER_Z },
+            want_earth);
+    if (want_earth_code != RV_OK) {
+        return want_earth_code;
+    }
+    const bool scaled =
+        scale_group->scale.x == want_scale.x && scale_group->scale.y == want_scale.y && scale_group->scale.z == want_scale.z;
+    const bool placed =
+        earth->position.x == want_earth.x && earth->position.y == want_earth.y && earth->position.z == want_earth.z;
+    if (!scaled || !placed) {
+        RV_LOG_ERR(SQUID_SCENE_TAG,
+            "scene refused: pose_scale must scale the structure by {} and the Earth must sit at minus the dome centre",
+            SQUID_STRUCTURE_SCALE);
+        return RV_ERR_INVAL;
+    }
+    return RV_OK;
+}
+
 // Unloads a scene refused after its load, so no half scene stays in the world. A failed unload is logged; the
 // refusal that caused it is the one the caller reports.
 inline void squid_scene_discard(rv_pdklib::ecs_world &world, uint32_t load_number)
@@ -189,6 +244,11 @@ inline int squid_scene_load(rv_pdklib::ecs_world &world, rv_cd *cd, squid_scene_
     if (check_code != RV_OK) {
         squid_scene_discard(world, load_number);
         return check_code;
+    }
+    const int structure_code = squid_scene_check_structure(world);
+    if (structure_code != RV_OK) {
+        squid_scene_discard(world, load_number);
+        return structure_code;
     }
     const int pose_code = squid_scene_find(world, SQUID_SCENE_POSE_YAW_NAME, objects.pose_yaw);
     if (pose_code != RV_OK) {

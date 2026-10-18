@@ -229,7 +229,7 @@ public:
         // After the step, so the bodies show this frame's positions and display rotation; a paused frame leaves both as
         // they were.
         if (bodies_ready_) {
-            note(squid_view_update(world_, pool_, game_.bodies));
+            note(squid_view_update(world_, pool_, game_.bodies, game_.phase, game_.descent));
         }
 
         if (frame_index_ % SQUID_LOG_PERIOD_FRAMES == 0) {

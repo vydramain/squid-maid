@@ -38,6 +38,10 @@ constexpr float SQUID_DOME_CENTER_X = -0.012f;
 constexpr float SQUID_DOME_CENTER_Y = -0.974f;
 constexpr float SQUID_DOME_CENTER_Z = -0.059f;
 
+// Scale of the structure's pose group (pose_scale, 5120 in Q20.12 in scenes/main.scene.toml): it turns the Earth plate,
+// the elephants and the turtle 1.25 about the dome centre, and the dome radius is sized for it.
+constexpr float SQUID_STRUCTURE_SCALE = 1.25f;
+
 // Disc edge as the angle from the dome top; at 90 deg (equator) edge balls are squeezed 36 percent along the circle,
 // at 60 deg 17 percent, and the edge ring sits above the plate.
 constexpr float SQUID_DISC_EDGE_DEG = 60.0f;
