@@ -137,13 +137,18 @@ constexpr float SQUID_SPLIT_SEPARATION_SPEED = 0.6f;
 // Share of the game tilt that the world on screen tilts by: up to about 11.7 deg (35 / 3).
 constexpr float SQUID_VISIBLE_TILT_SHARE = 1.0f / 3.0f;
 
-// Scene camera elevation above the disc plane, in degrees: the eye looks down from above. The azimuth below turns it
-// to the upper right corner of the scene.
-constexpr float SQUID_CAMERA_ELEVATION_DEG = 30.0f;
+// Scene camera elevation above the disc plane, in degrees. Rendered at 15, 20, 25 and 30: 15 leaves the level plate
+// nearly edge-on, 30 hides most of the structure under it; 25 shows the plate from above with the structure and turtle
+// under it, and with D-pad E held the dome cap stays in the frame. The azimuth below turns it to the upper right.
+constexpr float SQUID_CAMERA_ELEVATION_DEG = 25.0f;
 
 // Scene camera azimuth in degrees: the eye's turn about the vertical axis through the look-at point; positive moves
 // the eye toward +x, the viewer's right, so the camera looks from the upper right.
 constexpr float SQUID_CAMERA_AZIMUTH_DEG = 30.0f;
+
+// Yaw of the pose_yaw group in degrees (-122880 in Q20.12 in scenes/main.scene.toml): the balls and the structure turn
+// about the plate normal under the tilt root; squid_gravity_disc turns the gravity into those axes to match.
+constexpr float SQUID_POSE_YAW_DEG = -30.0f;
 
 // Vertical field of view in degrees; the distance below is computed for it.
 constexpr float SQUID_CAMERA_FOV_DEG = 30.0f;

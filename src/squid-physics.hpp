@@ -74,6 +74,15 @@ inline squid_flat squid_gravity(squid_tilt tilt)
     return squid_flat{ -SQUID_GRAVITY * std::sin(tz) * std::cos(tx), SQUID_GRAVITY * std::sin(tx) };
 }
 
+// squid_gravity in the disc's axes: pose_yaw turns the bodies about the plate normal under the tilt root, so the disc's
+// x and z are the root's turned by -SQUID_POSE_YAW_DEG (the inverse of that yaw). Without it the balls roll off the slope.
+inline squid_flat squid_gravity_disc(squid_tilt tilt)
+{
+    const squid_flat g = squid_gravity(tilt);
+    const float a = -SQUID_POSE_YAW_DEG * SQUID_DEG_TO_RAD;
+    return squid_flat{ std::cos(a) * g.x + std::sin(a) * g.z, -std::sin(a) * g.x + std::cos(a) * g.z };
+}
+
 // Radius of a body whose size squid_substep checked in the same substep; call it only after that check. Masses stay in
 // SQUID_BALL_MASS_MIN..SQUID_BALL_MASS_MAX through split and absorb, so the check holds in every substep.
 inline float squid_radius_checked(const squid_body &b)
@@ -473,7 +482,7 @@ inline int squid_physics_frame(squid_bodies &set, squid_tilt tilt, float dt, squ
         RV_LOG_ERR(SQUID_PHYSICS_TAG, "frame refused: tilt ({}, {}) is not finite", tilt.x_deg, tilt.z_deg);
         return RV_ERR_INVAL;
     }
-    const squid_flat accel = squid_gravity(tilt);
+    const squid_flat accel = squid_gravity_disc(tilt);
     const float h = dt / SQUID_SUBSTEPS;
     for (int step = 0; step < SQUID_SUBSTEPS; ++step) {
         const int rc = squid_substep(set, accel, h, counts, rng);

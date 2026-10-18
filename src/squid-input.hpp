@@ -33,6 +33,9 @@ constexpr float SQUID_RAD_TO_DEG = 180.0f / std::numbers::pi_v<float>;
 // Degrees to radians, the inverse of SQUID_RAD_TO_DEG.
 constexpr float SQUID_DEG_TO_RAD = std::numbers::pi_v<float> / 180.0f;
 
+// Half turn of the screen-frame turn in squid_input_camera_frame: at azimuth 0 the eye is on +z, so away is -z.
+constexpr float SQUID_HALF_TURN_DEG = 180.0f;
+
 struct squid_tilt {
     float x_deg = 0;
     float z_deg = 0;
@@ -168,6 +171,20 @@ inline squid_tilt squid_input_sensor_target(rv_pdklib::rv_vec4 neutral, const rv
     return squid_input_shape(squid_input_pad_tilt(neutral, quat));
 }
 
+// Raw tilt turned into the screen's frame by 180 - azimuth degrees: an exact rotation in the tilt plane. The eye is on +z
+// at azimuth 0, so forward must roll away from it (-z); with the left-handed look-at, screen right is -x there. The pose
+// yaw is not turned here: squid_gravity_disc turns the gravity into the disc's axes in the physics. Clamped again, since
+// the turn can push an axis past the limit.
+inline squid_tilt squid_input_camera_frame(squid_tilt t)
+{
+    const float angle = (SQUID_HALF_TURN_DEG - SQUID_CAMERA_AZIMUTH_DEG) * SQUID_DEG_TO_RAD;
+    const float c = std::cos(angle);
+    const float s = std::sin(angle);
+    const float x = t.x_deg;
+    const float z = t.z_deg;
+    return squid_tilt_clamp(squid_tilt{ x * c - z * s, x * s + z * c });
+}
+
 // One frame of dt seconds. The gyro is the source when the pad has one; otherwise the stick and D-pad.
 // A refused frame (bad dt, non-finite stick, or non-finite quaternion on the gyro path) changes nothing.
 inline int squid_input_step(squid_input &in, const rv_istate &state, uint64_t abilities, float dt)
@@ -189,8 +206,9 @@ inline int squid_input_step(squid_input &in, const rv_istate &state, uint64_t ab
         RV_LOG_ERR(SQUID_INPUT_TAG, "step refused: quaternion ({}, {}, {}, {}) is not finite", quat.x, quat.y, quat.z, quat.w);
         return RV_ERR_INVAL;
     }
-    const squid_tilt target =
+    const squid_tilt raw =
         sensor ? squid_input_sensor_target(in.neutral, state.motion) : squid_input_reserve_step(in, state, dt);
+    const squid_tilt target = squid_input_camera_frame(raw);
     const float follow = 1.0f - std::exp(-dt / SQUID_SMOOTHING_S);
     in.smoothed.x_deg += (target.x_deg - in.smoothed.x_deg) * follow;
     in.smoothed.z_deg += (target.z_deg - in.smoothed.z_deg) * follow;

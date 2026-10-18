@@ -34,6 +34,8 @@ inline constexpr const char *SQUID_SCENE_BODY_FILE = "body.scene.toml";
 inline constexpr const char *SQUID_SCENE_TILT_NAME = "tilt";
 // The pose group the balls load under: it carries the structure's rotation but not its scale.
 inline constexpr const char *SQUID_SCENE_POSE_YAW_NAME = "pose_yaw";
+// The pose group above pose_yaw: it must not rotate, so the yaw is the only turn under the tilt root.
+inline constexpr const char *SQUID_SCENE_POSE_PITCH_NAME = "pose_pitch";
 // The pose group that scales the structure, and the Earth plate it places; both are checked on load.
 inline constexpr const char *SQUID_SCENE_POSE_SCALE_NAME = "pose_scale";
 inline constexpr const char *SQUID_SCENE_EARTH_NAME = "earth";
@@ -211,6 +213,43 @@ inline int squid_scene_check_structure(rv_pdklib::ecs_world &world)
         RV_LOG_ERR(SQUID_SCENE_TAG,
             "scene refused: pose_scale must scale the structure by {} and the Earth must sit at minus the dome centre",
             SQUID_STRUCTURE_SCALE);
+        return RV_ERR_INVAL;
+    }
+    rv_pdklib::ecs_id pitch_id{};
+    const int pitch_code = squid_scene_find(world, SQUID_SCENE_POSE_PITCH_NAME, pitch_id);
+    if (pitch_code != RV_OK) {
+        return pitch_code;
+    }
+    rv_pdklib::ecs_id yaw_id{};
+    const int yaw_code = squid_scene_find(world, SQUID_SCENE_POSE_YAW_NAME, yaw_id);
+    if (yaw_code != RV_OK) {
+        return yaw_code;
+    }
+    const rv_pdklib::ecs_component_transform *pitch =
+        rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, pitch_id);
+    const rv_pdklib::ecs_component_transform *yaw =
+        rv_pdklib::ecs_component_get<rv_pdklib::ecs_component_transform>(world, yaw_id);
+    if (pitch == nullptr || yaw == nullptr) {
+        RV_LOG_ERR(SQUID_SCENE_TAG,
+            "'{}' or '{}' object has no transform",
+            SQUID_SCENE_POSE_PITCH_NAME,
+            SQUID_SCENE_POSE_YAW_NAME);
+        return RV_ERR_NOENT;
+    }
+    const rv_pdklib::fx_vec3 level{};
+    rv_pdklib::fx_vec3 want_turn{};
+    const int want_turn_code = squid_scene_fx_point(rv_pdklib::rv_vec3{ 0, SQUID_POSE_YAW_DEG, 0 }, want_turn);
+    if (want_turn_code != RV_OK) {
+        return want_turn_code;
+    }
+    const bool pitch_level = pitch->rotation.x == level.x && pitch->rotation.y == level.y && pitch->rotation.z == level.z;
+    const bool yaw_turned = yaw->rotation.x == want_turn.x && yaw->rotation.y == want_turn.y && yaw->rotation.z == want_turn.z;
+    if (!pitch_level || !yaw_turned) {
+        RV_LOG_ERR(SQUID_SCENE_TAG,
+            "scene refused: '{}' must not rotate and '{}' must turn {} deg about y; the physics assumes it",
+            SQUID_SCENE_POSE_PITCH_NAME,
+            SQUID_SCENE_POSE_YAW_NAME,
+            SQUID_POSE_YAW_DEG);
         return RV_ERR_INVAL;
     }
     return RV_OK;

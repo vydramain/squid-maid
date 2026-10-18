@@ -358,15 +358,15 @@ private:
         sounds_started_ = 0;
     }
 
-    // The tilt the input asks for this frame; the smoothed game tilt follows it.
+    // The tilt the input asks for this frame, in the screen's frame; the smoothed game tilt follows it.
     squid_tilt target_tilt(const rv_istate &state) const
     {
         if (sensor_) {
-            return squid_input_sensor_target(game_.input.neutral, state.motion);
+            return squid_input_camera_frame(squid_input_sensor_target(game_.input.neutral, state.motion));
         }
         // A zero step moves no key and returns the target; the copy keeps the game's keys as they are.
         squid_input probe = game_.input;
-        return squid_input_reserve_step(probe, state, 0.0f);
+        return squid_input_camera_frame(squid_input_reserve_step(probe, state, 0.0f));
     }
 
     squid_hud_round hud_round() const
