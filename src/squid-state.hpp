@@ -93,7 +93,7 @@ struct squid_edge {
 };
 
 inline constexpr auto SQUID_EDGES = std::to_array<squid_edge>({
-    { squid_phase::prepare, squid_command::calibrate, squid_phase::ready },
+    { squid_phase::prepare, squid_command::start, squid_phase::ready },
     { squid_phase::ready, squid_command::calibrate, squid_phase::ready },
     { squid_phase::pause, squid_command::calibrate, squid_phase::pause },
     { squid_phase::ready, squid_command::start, squid_phase::play },
@@ -277,22 +277,6 @@ inline int squid_game_calibrate(squid_game &g, const rv_istate &state, uint64_t 
     return squid_input_calibrate(g.input, state);
 }
 
-// With a gyro the start takes the neutral from the pose the pad is held in, so the round plays from that pose.
-// A refused pose keeps the old neutral and the start goes on. The smoothed tilt is zeroed with the new neutral,
-// as the ready phase followed the old one.
-inline void squid_game_start(squid_game &g, const rv_istate &state, uint64_t abilities)
-{
-    const bool sensor = (abilities & RV_ISOURCE_GYRO_MOVE) != 0;
-    if (!sensor) {
-        return;
-    }
-    if (squid_input_calibrate(g.input, state) != RV_OK) {
-        RV_LOG_WARN(squid_state_tag, "start keeps the old neutral: the pose at start is refused");
-        return;
-    }
-    g.input.smoothed = squid_tilt{};
-}
-
 // Balls per size (index size - 1) and the total mass of the set; Alkoldun counts in the mass only.
 struct squid_census {
     std::array<int, std::size(SQUID_BALL_RADIUS)> balls{};
@@ -401,8 +385,6 @@ inline int squid_game_apply(squid_game &g, squid_command command, const rv_istat
     case squid_command::split_all:
         return squid_game_split_all(g);
     case squid_command::start:
-        squid_game_start(g, state, abilities);
-        break;
     case squid_command::pause:
         break;
     }

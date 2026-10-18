@@ -46,11 +46,12 @@ struct squid_button_row {
     squid_command command;
 };
 
-// Port 0 buttons by phase, named by the pad's labels: A (SOUTH) is the one "next" button, calibrate while preparing and
-// start when ready; Y (NORTH) recalibrates; View (MENU_BTTN_VIEW) pauses and resumes; B (EAST) restarts. L5 (lower left
-// rear) splits the balls in play and pause; frame_update passes it only while the debug panel is open.
+// Port 0 buttons by phase, named by the pad's labels: A (SOUTH) is the one "next" button, start from prepare and from
+// ready, and takes no pose; Y (NORTH) sets the pose the pad is held in as level; View (MENU_BTTN_VIEW) pauses and resumes;
+// B (EAST) restarts. L5 (lower left rear) splits the balls in play and pause; frame_update passes it only while the debug
+// panel is open.
 constexpr auto SQUID_BUTTON_ROWS = std::to_array<squid_button_row>({
-    { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::prepare, squid_command::calibrate },
+    { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::prepare, squid_command::start },
     { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::ready, squid_command::start },
     { RV_ISOURCE_FRONT_BTTN_NORTH, squid_phase::ready, squid_command::calibrate },
     { RV_ISOURCE_FRONT_BTTN_NORTH, squid_phase::pause, squid_command::calibrate },
@@ -293,8 +294,8 @@ private:
             RV_LOG_INFO(SQUID_MAID_TAG, "calibration without a gyro: the neutral stays as it is");
         }
         const int code = squid_game_command(game_, row->command, state, abilities);
-        // A gyro calibration or start sets the neutral. The calibrate sound plays on pause, resume and restart too,
-        // and on a gyro calibration, not on a start.
+        // A gyro calibration sets the neutral. The calibrate sound plays on pause, resume and restart too, and on a gyro
+        // calibration, not on a start.
         const bool silent = row->command == squid_command::start || (calibrating && !sensor_);
         if (code == RV_OK) {
             happened[static_cast<std::size_t>(squid_frame_event::calibrate)] = !silent;

@@ -39,7 +39,7 @@ struct squid_tilt {
 };
 
 struct squid_input {
-    // Pad frame to world at calibration or at the round start; the sensor tilt is measured from it.
+    // Pad frame to world, set by calibration (Y) only; it starts level. The sensor tilt is measured from it.
     rv_pdklib::rv_vec4 neutral{ 0, 0, 0, 1 };
     // Target tilt set by the reserve keys (D-pad); kept after release until level.
     squid_tilt keys{};

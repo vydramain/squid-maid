@@ -20,17 +20,18 @@ constexpr std::string_view SQUID_TEXT_PHASE_LANDED = "финал";
 // Leads: what the player does. The 5 is the bottle goal, SQUID_BEER_GOAL in squid-params.hpp; these are plain
 // constants, so keep the number in step with it.
 constexpr std::string_view SQUID_TEXT_LEAD_PREPARE =
-    "Наклоняй контроллер - предметы поплывут по куполу. Толкай Алколдуном холодильники: при расколе из них выпадает пиво. "
+    "Положи контроллер ровно и жми (A): горизонт - ноль наклона. Наклоняй его - предметы поплывут по куполу. "
+    "Толкай Алколдуном холодильники: при расколе из них выпадает пиво. "
     "Выпей 5 меченых бутылок - их выбивает только удар по самому тяжёлому холодильнику.";
 constexpr std::string_view SQUID_TEXT_LEAD_PLAY = "Цель: 5 меченых бутылок - бей Алколдуном самый тяжёлый холодильник.";
 constexpr std::string_view SQUID_TEXT_LEAD_DESCENT = "Алколдун летит вниз, на центр тарелки.";
 constexpr std::string_view SQUID_TEXT_LEAD_LANDED = "Алколдун приземлился: раунд выигран.";
 
 // Hints. Each button is its pad label in parentheses: (A) (B) (X) (Y) (View).
-constexpr std::string_view SQUID_TEXT_HINT_PREPARE = "(A) калибровка  (X) выровнять";
-constexpr std::string_view SQUID_TEXT_HINT_READY = "(A) старт  (Y) перекалибровка  (B) рестарт  (X) выровнять";
+constexpr std::string_view SQUID_TEXT_HINT_PREPARE = "(A) дальше  (X) выровнять";
+constexpr std::string_view SQUID_TEXT_HINT_READY = "(A) старт  (Y) эта поза - ровно  (B) рестарт  (X) выровнять";
 constexpr std::string_view SQUID_TEXT_HINT_PLAY = "(View) пауза";
-constexpr std::string_view SQUID_TEXT_HINT_PAUSE = "(View) продолжить  (Y) перекалибровка  (B) рестарт";
+constexpr std::string_view SQUID_TEXT_HINT_PAUSE = "(View) продолжить  (Y) эта поза - ровно  (B) рестарт";
 constexpr std::string_view SQUID_TEXT_HINT_DESCENT = "(View) пауза";
 constexpr std::string_view SQUID_TEXT_HINT_LANDED = "(B) рестарт";
 
