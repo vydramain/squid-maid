@@ -58,6 +58,11 @@ constexpr auto SQUID_BUTTON_ROWS = std::to_array<squid_button_row>({
     { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::pause, squid_command::pause },
     { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::ready, squid_command::restart },
     { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::pause, squid_command::restart },
+    { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::descent, squid_command::pause },
+    { RV_ISOURCE_MENU_BTTN_VIEW, squid_phase::descent_pause, squid_command::pause },
+    { RV_ISOURCE_FRONT_BTTN_NORTH, squid_phase::descent_pause, squid_command::calibrate },
+    { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::descent_pause, squid_command::restart },
+    { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::landed, squid_command::restart },
     { RV_ISOURCE_REAR_BTTN_LEFT_LOWER, squid_phase::play, squid_command::split_all },
     { RV_ISOURCE_REAR_BTTN_LEFT_LOWER, squid_phase::pause, squid_command::split_all },
 });

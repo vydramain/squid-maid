@@ -11,7 +11,9 @@
 #include <iterator>
 #include <numbers>
 #include <random>
+#include <ranges>
 
+#include "squid-descent.hpp"
 #include "squid-input.hpp"
 #include "squid-params.hpp"
 #include "squid-physics.hpp"
@@ -36,7 +38,10 @@ enum class squid_phase {
     prepare,
     ready,
     play,
-    pause
+    pause,
+    descent,
+    descent_pause,
+    landed
 };
 enum class squid_command {
     calibrate,
@@ -47,22 +52,25 @@ enum class squid_command {
 };
 // Events move the phase without a command.
 enum class squid_event {
-    pad_lost
+    pad_lost,
+    goal_reached,
+    landed
 };
 
 // Enumerator counts, from the enums; the name and event tables are sized by them.
-constexpr std::size_t SQUID_PHASE_COUNT = static_cast<std::size_t>(squid_phase::pause) + 1;
+constexpr std::size_t SQUID_PHASE_COUNT = static_cast<std::size_t>(squid_phase::landed) + 1;
 constexpr std::size_t SQUID_COMMAND_COUNT = static_cast<std::size_t>(squid_command::split_all) + 1;
-constexpr std::size_t SQUID_EVENT_COUNT = static_cast<std::size_t>(squid_event::pad_lost) + 1;
+constexpr std::size_t SQUID_EVENT_COUNT = static_cast<std::size_t>(squid_event::landed) + 1;
 
 // Names for the refusal log, indexed by the enum value.
-inline constexpr std::array<const char *, SQUID_PHASE_COUNT> SQUID_PHASE_NAMES{ "prepare", "ready", "play", "pause" };
+inline constexpr std::array<const char *, SQUID_PHASE_COUNT>
+    SQUID_PHASE_NAMES{ "prepare", "ready", "play", "pause", "descent", "descent_pause", "landed" };
 inline constexpr std::array<const char *, SQUID_COMMAND_COUNT> SQUID_COMMAND_NAMES{ "calibrate",
     "start",
     "pause",
     "restart",
     "split_all" };
-inline constexpr std::array<const char *, SQUID_EVENT_COUNT> SQUID_EVENT_NAMES{ "pad_lost" };
+inline constexpr std::array<const char *, SQUID_EVENT_COUNT> SQUID_EVENT_NAMES{ "pad_lost", "goal_reached", "landed" };
 
 template <std::size_t N>
 constexpr bool squid_names_set(const std::array<const char *, N> &names)
@@ -95,6 +103,11 @@ inline constexpr auto SQUID_EDGES = std::to_array<squid_edge>({
     { squid_phase::pause, squid_command::restart, squid_phase::ready },
     { squid_phase::play, squid_command::split_all, squid_phase::play },
     { squid_phase::pause, squid_command::split_all, squid_phase::pause },
+    { squid_phase::descent, squid_command::pause, squid_phase::descent_pause },
+    { squid_phase::descent_pause, squid_command::pause, squid_phase::descent },
+    { squid_phase::descent_pause, squid_command::restart, squid_phase::ready },
+    { squid_phase::descent_pause, squid_command::calibrate, squid_phase::descent_pause },
+    { squid_phase::landed, squid_command::restart, squid_phase::ready },
 });
 
 // Phase changes that come from the round itself, not from a command.
@@ -104,21 +117,16 @@ struct squid_event_edge {
     squid_phase to;
 };
 
-// One row per event, in enum order (checked below).
-inline constexpr std::array<squid_event_edge, SQUID_EVENT_COUNT> SQUID_EVENT_EDGES{ {
+inline constexpr auto SQUID_EVENT_EDGES = std::to_array<squid_event_edge>({
     { squid_phase::play, squid_event::pad_lost, squid_phase::pause },
-} };
-
-constexpr bool squid_event_table_in_order()
-{
-    for (std::size_t i = 0; i < SQUID_EVENT_COUNT; ++i) {
-        if (static_cast<std::size_t>(SQUID_EVENT_EDGES[i].event) != i) {
-            return false;
-        }
-    }
-    return true;
-}
-static_assert(squid_event_table_in_order(), "SQUID_EVENT_EDGES needs one row per squid_event, in enum order");
+    { squid_phase::descent, squid_event::pad_lost, squid_phase::descent_pause },
+    { squid_phase::play, squid_event::goal_reached, squid_phase::descent },
+    { squid_phase::descent, squid_event::landed, squid_phase::landed },
+});
+// Every event needs a row, or the round could never make that move.
+static_assert(std::ranges::all_of(std::views::iota(0uz, SQUID_EVENT_COUNT), [](std::size_t e) {
+    return std::ranges::contains(SQUID_EVENT_EDGES, static_cast<squid_event>(e), &squid_event_edge::event);
+}));
 
 struct squid_game {
     squid_phase phase = squid_phase::prepare;
@@ -132,6 +140,7 @@ struct squid_game {
     int round_absorbs = 0;
     // Marked bottles drunk this round; each play frame adds its marked drinks.
     int beer_drunk = 0;
+    squid_descent descent{}; // Taken at the goal, cleared by restart.
     // Draws the body drift in play; reseeded with the layout seed on every build, so a round and its restart repeat.
     std::minstd_rand drift_rng{ SQUID_LAYOUT_SEED };
 };
@@ -366,6 +375,7 @@ inline int squid_game_restart(squid_game &g)
     g.round_splits = 0;
     g.round_absorbs = 0;
     g.beer_drunk = 0;
+    g.descent = squid_descent{};
     squid_input_level(g.input);
     g.input.smoothed = squid_tilt{};
     return RV_OK;
@@ -454,11 +464,25 @@ inline int squid_game_play(squid_game &g, const rv_istate &state, uint64_t abili
     g.round_splits += counts.splits;
     g.round_absorbs += counts.absorbs;
     g.beer_drunk += counts.marked_drunk;
+    if (g.beer_drunk >= SQUID_BEER_GOAL) {
+        const int started = squid_descent_start(g.bodies, g.descent);
+        return started != RV_OK ? started : squid_game_fire(g, squid_event::goal_reached);
+    }
     return RV_OK;
 }
 
-// One frame of dt seconds. Ready takes input only; play also steps the physics. Losing the pad in play
-// pauses the round. Prepare and pause do not move.
+// Pad loss pauses the descent; otherwise the frame advances it, and it lands when its time is up.
+inline int squid_game_descend(squid_game &g, uint64_t abilities, float dt)
+{
+    if (abilities == 0) {
+        RV_LOG_INFO(squid_state_tag, "pad lost: descent paused");
+        return squid_game_fire(g, squid_event::pad_lost);
+    }
+    return squid_descent_advance(g.descent, dt) ? squid_game_fire(g, squid_event::landed) : RV_OK;
+}
+
+// One frame of dt seconds. Ready takes input only; play steps the physics, and losing the pad pauses the round. Prepare
+// and pause do not move. Descent runs only the descent; its pause does not move, and the landing frame changes only the phase.
 inline int squid_game_step(squid_game &g, const rv_istate &state, uint64_t abilities, float dt)
 {
     const bool dt_bad = !std::isfinite(dt) || dt <= 0.0f;
@@ -468,6 +492,9 @@ inline int squid_game_step(squid_game &g, const rv_istate &state, uint64_t abili
     }
     // The counts are of this frame only: a frame that steps no physics leaves them zero.
     g.events = squid_event_counts{};
+    if (g.phase == squid_phase::descent) {
+        return squid_game_descend(g, abilities, dt);
+    }
     const bool playing = g.phase == squid_phase::play;
     const bool listening = playing || g.phase == squid_phase::ready;
     if (!listening) {

@@ -56,6 +56,9 @@ constexpr int SQUID_START_BALLS = 10;
 // Marked bottles Alkoldun drinks to finish the round.
 constexpr int SQUID_BEER_GOAL = 3;
 
+// Length of the finale flight in seconds: Alkoldun flies from the dome to the plate centre in this time after the goal.
+constexpr float SQUID_DESCENT_S = 3.0f;
+
 // Alkoldun's mass in smallest units: it weighs like size 3; it never splits.
 constexpr int SQUID_ALKOLDUN_MASS = 4;
 

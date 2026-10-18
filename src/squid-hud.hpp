@@ -56,15 +56,21 @@ constexpr auto SQUID_HUD_PHASE_LABELS = std::to_array<std::string_view>({
     SQUID_TEXT_PHASE_READY,
     SQUID_TEXT_PHASE_PLAY,
     SQUID_TEXT_PHASE_PAUSE,
+    SQUID_TEXT_PHASE_DESCENT,
+    SQUID_TEXT_PHASE_PAUSE,
+    SQUID_TEXT_PHASE_LANDED,
 });
 static_assert(SQUID_HUD_PHASE_LABELS.size() == SQUID_PHASE_COUNT, "SQUID_HUD_PHASE_LABELS needs one label per phase");
 
-// The lead line of the hint: what the player does now. None in pause.
+// The lead line of the hint: what the player does now. None in the pauses.
 constexpr auto SQUID_HUD_PHASE_LEADS = std::to_array<std::string_view>({
     SQUID_TEXT_LEAD_PREPARE,
     SQUID_TEXT_LEAD_PREPARE,
     SQUID_TEXT_LEAD_PLAY,
     std::string_view{},
+    SQUID_TEXT_LEAD_DESCENT,
+    std::string_view{},
+    SQUID_TEXT_LEAD_LANDED,
 });
 static_assert(SQUID_HUD_PHASE_LEADS.size() == SQUID_PHASE_COUNT, "SQUID_HUD_PHASE_LEADS needs one lead per phase");
 
@@ -73,13 +79,19 @@ constexpr auto SQUID_HUD_PHASE_HINTS = std::to_array<std::string_view>({
     SQUID_TEXT_HINT_READY,
     SQUID_TEXT_HINT_PLAY,
     SQUID_TEXT_HINT_PAUSE,
+    SQUID_TEXT_HINT_DESCENT,
+    SQUID_TEXT_HINT_PAUSE,
+    SQUID_TEXT_HINT_LANDED,
 });
 static_assert(SQUID_HUD_PHASE_HINTS.size() == SQUID_PHASE_COUNT, "SQUID_HUD_PHASE_HINTS needs one hint per phase");
 
-// The beer counter shows in play and pause only, not while preparing or ready.
+// The beer counter shows from play on, not while preparing or ready.
 constexpr auto SQUID_HUD_PHASE_SHOWS_BEER = std::to_array<bool>({
     false,
     false,
+    true,
+    true,
+    true,
     true,
     true,
 });
