@@ -11,6 +11,10 @@ files = ["scenes/*.scene.toml"]
 [sounds]
 files = ["assets/snd/*.wav"]
 
+[music]
+# Each .mp3 is baked to a headerless S16LE mono 44100 Hz "<stem>.pcm" drive asset, streamed whole by the game.
+files = ["assets/music/*.mp3"]
+
 [textures]
 # No separate textures yet; format is still required by [models].
 files = []

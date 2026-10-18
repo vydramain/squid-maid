@@ -17,6 +17,7 @@
 #include "pdklib/rv_ecs/rv_ecs_frame.hpp"
 #include "pdklib/rv_font/rv_font.hpp"
 #include "pdklib/rv_logs/rv_logs.hpp"
+#include "squid-ambient.hpp"
 #include "squid-draw.hpp"
 #include "squid-hud.hpp"
 #include "squid-input.hpp"
@@ -145,6 +146,10 @@ public:
         }
         // The loader logs the cause; without sounds each event is refused and logged by its play.
         note(squid_sound_init(pdk_, sound_));
+        // The loader logs the cause; without the track the game runs with no ambient.
+        const int ambient_code = squid_ambient_init(pdk_, ambient_);
+        note(ambient_code);
+        ambient_ready_ = ambient_code == RV_OK;
         // The loader logs the cause; without the scene the disc draws the debug view only.
         const int scene_code = squid_scene_load(world_, rv_pdko_cd(pdk_), scene_);
         note(scene_code);
@@ -193,6 +198,10 @@ public:
             target_tilt_ = target;
         }
         note(sound_changes(stepped, happened));
+        // The loader logs a failed init; without the track there is nothing to refill.
+        if (ambient_ready_) {
+            note(squid_ambient_step(pdk_, ambient_));
+        }
         // The round start has no sound; it logs the config once.
         const bool started = phase_before == squid_phase::ready && game_.phase == squid_phase::play;
         if (started) {
@@ -427,6 +436,9 @@ private:
 
     squid_game game_;
     squid_sound sound_;
+    // The ambient track's stream; ambient_ready_ once its init succeeded.
+    squid_ambient ambient_;
+    bool ambient_ready_ = false;
     // The tilt root's rotation, taken from the shown tilt each frame; kept when the conversion refuses.
     rv_pdklib::fx_vec3 rotation_{};
     // The input's target tilt; the debug panel shows it beside the smoothed game tilt, not the 1/3 picture.
