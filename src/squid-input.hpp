@@ -39,7 +39,7 @@ struct squid_tilt {
 };
 
 struct squid_input {
-    // Pad frame to world at calibration; the sensor tilt is measured from it.
+    // Pad frame to world at calibration or at the round start; the sensor tilt is measured from it.
     rv_pdklib::rv_vec4 neutral{ 0, 0, 0, 1 };
     // Target tilt set by the reserve keys (D-pad); kept after release until level.
     squid_tilt keys{};
@@ -119,7 +119,7 @@ inline int squid_input_calibrate(squid_input &in, const rv_istate &state)
     const float norm = std::sqrt(rv_pdklib::rv_dot(raw, raw));
     const bool usable = std::isfinite(norm) && norm > SQUID_QUAT_MIN_NORM;
     if (!usable) {
-        RV_LOG_ERR(SQUID_INPUT_TAG,
+        RV_LOG_WARN(SQUID_INPUT_TAG,
             "calibrate refused: quaternion ({}, {}, {}, {}) is zero or not finite",
             raw.x,
             raw.y,

@@ -269,7 +269,8 @@ private:
             RV_LOG_INFO(SQUID_MAID_TAG, "calibration without a gyro: the neutral stays as it is");
         }
         const int code = squid_game_command(game_, row->command, state, abilities);
-        // Only a gyro calibration sets the neutral; pause, resume and restart play the calibrate sound too, a start none.
+        // A gyro calibration or start sets the neutral. The calibrate sound plays on pause, resume and restart too,
+        // and on a gyro calibration, not on a start.
         const bool silent = row->command == squid_command::start || (calibrating && !sensor_);
         if (code == RV_OK) {
             happened[static_cast<std::size_t>(squid_frame_event::calibrate)] = !silent;
