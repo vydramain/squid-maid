@@ -63,8 +63,15 @@ inline constexpr const char *SQUID_VIEW_ALKOLDUN_MODEL = "alkoldun.mppcmod";
 // Model file of a bottle; like the balls, it is made for 4/3 of its collision radius.
 inline constexpr const char *SQUID_VIEW_BOTTLE_MODEL = "bottle.mppcmod";
 
-// Fixed model by kind, indexed by squid_kind; nullptr means the ball table decides.
-inline constexpr const char *SQUID_VIEW_KIND_MODELS[] = { nullptr, SQUID_VIEW_ALKOLDUN_MODEL, SQUID_VIEW_BOTTLE_MODEL };
+// Model file of a marked bottle: saturated violet, so it reads apart from a plain bottle on the dome.
+inline constexpr const char *SQUID_VIEW_BOTTLE_MARKED_MODEL = "bottle_marked.mppcmod";
+
+// Bottle model indexed by body.marked: plain at 0, marked at 1.
+inline constexpr const char *SQUID_VIEW_BOTTLE_MODELS[] = { SQUID_VIEW_BOTTLE_MODEL, SQUID_VIEW_BOTTLE_MARKED_MODEL };
+static_assert(std::size(SQUID_VIEW_BOTTLE_MODELS) == static_cast<std::size_t>(true) + 1);
+
+// Fixed model by kind, indexed by squid_kind; nullptr means the bottle or ball table decides.
+inline constexpr const char *SQUID_VIEW_KIND_MODELS[] = { nullptr, SQUID_VIEW_ALKOLDUN_MODEL, nullptr };
 static_assert(std::size(SQUID_VIEW_KIND_MODELS) == static_cast<std::size_t>(squid_kind::bottle) + 1);
 
 // Alkoldun with a flame under him, the same figure as the plain model; the flight shows him with it.
@@ -102,6 +109,10 @@ inline int squid_view_model(const squid_body &body, const char *&model)
     }
     if (SQUID_VIEW_KIND_MODELS[kind] != nullptr) {
         model = SQUID_VIEW_KIND_MODELS[kind];
+        return RV_OK;
+    }
+    if (body.kind == squid_kind::bottle) {
+        model = SQUID_VIEW_BOTTLE_MODELS[static_cast<std::size_t>(body.marked)];
         return RV_OK;
     }
     int size = 0;
