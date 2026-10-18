@@ -3,12 +3,14 @@
 // HUD text over the frame: the hint of the phase, the beer counter and the debug panel.
 // Drawing only. The caller owns the font style (squid_draw_font_load in squid-draw.hpp) and the round data.
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <format>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "squid-input.hpp"
 #include "squid-state.hpp"
@@ -21,17 +23,20 @@
 namespace squid
 {
 
-// The text sits in the overlay, the top key: nearer than the scene and the decals (rv_primitives.h).
+// The text and its backdrop sit in the overlay, the top key: nearer than the scene and the decals (rv_primitives.h).
 constexpr int32_t SQUID_HUD_DEPTH = RV_DEPTH_MAX;
 
 // Layout from the top-left corner, in pixels. A line is one font line plus the gap below it.
 constexpr int SQUID_HUD_X = 4;
 constexpr int SQUID_HUD_Y = 4;
 constexpr int SQUID_HUD_LINE_GAP_PX = 2;
-// Text stops this far short of each screen edge; a line wider than that wraps at spaces.
+// Text stops this far short of each screen edge; a line wider than that wraps at spaces. The backdrop pads the text by
+// this much on the right and below.
 constexpr int SQUID_HUD_MARGIN_PX = 4;
 // Blank lines between the hint and the debug panel.
 constexpr int SQUID_HUD_PANEL_GAP_LINES = 1;
+// Backdrop colour: near-black and opaque. The console has no blending yet (pdk/README.md), so a see-through panel is out.
+constexpr rv_color SQUID_HUD_BACKDROP_COLOUR = { 8, 9, 14 };
 
 // What the hint, the beer counter and the debug panel read from the round. Built positionally by squid-maid.cpp: keep
 // the field order.
@@ -127,15 +132,13 @@ inline int squid_hud_put(rv_cv *cv, rv_pdklib::rv_font_style style, int x, int y
     return RV_OK;
 }
 
-// Puts text as lines wrapped at spaces, each no wider than max_px. Line i goes to y plus i steps; y ends one step past
-// the last line. A word wider than max_px gets a line of its own and overflows.
-inline int squid_hud_put_wrapped(rv_cv *cv, rv_pdklib::rv_font_style style, int max_px, int &y, std::string_view text)
+// The lines of the HUD, in draw order. Each entry is one line; an empty entry is a blank line that still takes a step.
+using squid_hud_lines = std::vector<std::string>;
+
+// Appends one piece of text wrapped at spaces, each line no wider than max_px. A word wider than max_px gets a line of
+// its own and overflows. Empty text still appends one empty line.
+inline void squid_hud_wrap_piece(rv_pdklib::rv_font_style style, int max_px, std::string_view text, squid_hud_lines &lines)
 {
-    int first_code = RV_OK;
-    const auto put_line = [cv, style, &y, &first_code](std::string_view line) {
-        first_code = squid_hud_first(first_code, squid_hud_put(cv, style, SQUID_HUD_X, y, line));
-        y += squid_hud_line_step(style);
-    };
     std::size_t line_start = 0;
     std::size_t line_end = 0;
     std::size_t word_start = 0;
@@ -145,41 +148,41 @@ inline int squid_hud_put_wrapped(rv_cv *cv, rv_pdklib::rv_font_style style, int 
         const std::string_view candidate = text.substr(line_start, word_end - line_start);
         const bool fits = word_start == line_start || rv_pdklib::rv_font_measure_width(candidate, style.scale) <= max_px;
         if (!fits) {
-            put_line(text.substr(line_start, line_end - line_start));
+            lines.emplace_back(text.substr(line_start, line_end - line_start));
             line_start = word_start;
         }
         line_end = word_end;
         word_start = word_end + 1;
     }
-    put_line(text.substr(line_start, line_end - line_start));
-    if (first_code != RV_OK) {
-        return first_code;
-    }
-    return RV_OK;
+    lines.emplace_back(text.substr(line_start, line_end - line_start));
 }
 
-// The beer counter: one line under the hint, in the phases SQUID_HUD_PHASE_SHOWS_BEER marks.
-inline int squid_hud_beer(rv_cv *cv, rv_pdklib::rv_font_style style, int max_px, int &y, const squid_hud_round &round)
+// Appends text as lines: a '\n' is a hard break, so each rule of a lead starts its own line. Each piece wraps on its own.
+inline void squid_hud_wrap(rv_pdklib::rv_font_style style, int max_px, std::string_view text, squid_hud_lines &lines)
 {
-    if (!SQUID_HUD_PHASE_SHOWS_BEER[static_cast<std::size_t>(round.phase)]) {
-        return RV_OK;
+    std::size_t piece_start = 0;
+    while (true) {
+        const std::size_t newline = text.find('\n', piece_start);
+        const std::size_t piece_end = newline == std::string_view::npos ? text.size() : newline;
+        squid_hud_wrap_piece(style, max_px, text.substr(piece_start, piece_end - piece_start), lines);
+        if (newline == std::string_view::npos) {
+            return;
+        }
+        piece_start = newline + 1;
     }
-    const std::string text = std::format(SQUID_TEXT_BEER, round.beer_drunk, SQUID_BEER_GOAL);
-    return squid_hud_put_wrapped(cv, style, max_px, y, text);
 }
 
-// The hint: a lead line, then the buttons of the phase, then the beer counter.
-inline int squid_hud_hint(rv_cv *cv, rv_pdklib::rv_font_style style, int max_px, int &y, const squid_hud_round &round)
+// The hint: a lead line, then the buttons of the phase, then the beer counter in the phases that show it.
+inline void
+squid_hud_hint_lines(rv_pdklib::rv_font_style style, int max_px, const squid_hud_round &round, squid_hud_lines &lines)
 {
     const auto index = static_cast<std::size_t>(round.phase);
-    const int lead_code = squid_hud_put_wrapped(cv, style, max_px, y, SQUID_HUD_PHASE_LEADS[index]);
-    const int buttons_code = squid_hud_put_wrapped(cv, style, max_px, y, SQUID_HUD_PHASE_HINTS[index]);
-    const int beer_code = squid_hud_beer(cv, style, max_px, y, round);
-    const int code = squid_hud_first(squid_hud_first(lead_code, buttons_code), beer_code);
-    if (code != RV_OK) {
-        return code;
+    squid_hud_wrap(style, max_px, SQUID_HUD_PHASE_LEADS[index], lines);
+    squid_hud_wrap(style, max_px, SQUID_HUD_PHASE_HINTS[index], lines);
+    if (SQUID_HUD_PHASE_SHOWS_BEER[index]) {
+        const std::string text = std::format(SQUID_TEXT_BEER, round.beer_drunk, SQUID_BEER_GOAL);
+        squid_hud_wrap(style, max_px, text, lines);
     }
-    return RV_OK;
 }
 
 // The debug panel's lines, one string each: title, phase, target and actual tilt, source, ball counts by size, total mass,
@@ -200,28 +203,63 @@ inline auto squid_hud_debug_lines(const squid_hud_round &round, const squid_hud_
     };
 }
 
-// The debug panel: the lines of squid_hud_debug_lines, one line each.
-inline int squid_hud_debug_panel(rv_cv *cv,
-    rv_pdklib::rv_font_style style,
+// The debug panel's lines, wrapped like the hint.
+inline void squid_hud_debug_panel_lines(rv_pdklib::rv_font_style style,
     int max_px,
-    int &y,
     const squid_hud_round &round,
-    const squid_hud_debug &debug)
+    const squid_hud_debug &debug,
+    squid_hud_lines &lines)
 {
-    const auto lines = squid_hud_debug_lines(round, debug);
-    int first_code = RV_OK;
-    for (const std::string &line : lines) {
-        first_code = squid_hud_first(first_code, squid_hud_put_wrapped(cv, style, max_px, y, line));
+    for (const std::string &line : squid_hud_debug_lines(round, debug)) {
+        squid_hud_wrap(style, max_px, line, lines);
     }
-    if (first_code != RV_OK) {
-        return first_code;
-    }
-    return RV_OK;
 }
 
-// Draws the HUD over the frame: the hint always, the debug panel when show_debug is set. Every part is drawn even when
-// one is refused; the first refusal is returned. Without a screen width there is nothing to wrap to: that refusal is
-// returned before anything is drawn.
+// Every line of the HUD in draw order: the hint, then the debug panel when show_debug is set. Laid out before anything
+// is drawn, so the backdrop can be sized to the text it sits behind.
+inline squid_hud_lines squid_hud_layout(rv_pdklib::rv_font_style style,
+    int max_px,
+    const squid_hud_round &round,
+    const squid_hud_debug &debug,
+    bool show_debug)
+{
+    squid_hud_lines lines;
+    squid_hud_hint_lines(style, max_px, round, lines);
+    if (show_debug) {
+        for (int i = 0; i < SQUID_HUD_PANEL_GAP_LINES; ++i) {
+            lines.emplace_back();
+        }
+        squid_hud_debug_panel_lines(style, max_px, round, debug, lines);
+    }
+    return lines;
+}
+
+// One flat sprite from the top-left corner: as wide as the widest line plus the left inset and the margin, as high as the
+// lines plus the top inset and the margin. Refused puts return their code.
+inline int squid_hud_backdrop_put(rv_cv *cv, rv_pdklib::rv_font_style style, const squid_hud_lines &lines)
+{
+    int widest = 0;
+    for (const std::string &line : lines) {
+        widest = std::max(widest, rv_pdklib::rv_font_measure_width(line, style.scale));
+    }
+    const int width = SQUID_HUD_X + widest + SQUID_HUD_MARGIN_PX;
+    const int height = SQUID_HUD_Y + static_cast<int>(lines.size()) * squid_hud_line_step(style) + SQUID_HUD_MARGIN_PX;
+    rv_primitive primitive{};
+    primitive.type = RV_PRIMITIVE_SPRITE;
+    primitive.depth = SQUID_HUD_DEPTH;
+    primitive.data.sprite.fill_mode = RV_PRIMITIVE_FILL_MODE_FLAT_COLOURED;
+    primitive.data.sprite.mapping = RV_TEXWRAP_CLAMP;
+    primitive.data.sprite.color = SQUID_HUD_BACKDROP_COLOUR;
+    primitive.data.sprite.x = 0;
+    primitive.data.sprite.y = 0;
+    primitive.data.sprite.width = static_cast<uint16_t>(width);
+    primitive.data.sprite.height = static_cast<uint16_t>(height);
+    return static_cast<int>(rv_cv_frame_put(cv, &primitive));
+}
+
+// Draws the HUD over the frame: a backdrop behind the hint, and the debug panel under it when show_debug is set. Every
+// part is drawn even when one is refused; the first refusal is returned. Without a screen width there is nothing to wrap
+// to: that refusal is returned before anything is drawn.
 inline int squid_hud_draw(rv_cv *cv,
     rv_pdklib::rv_font_style style,
     const squid_hud_round &round,
@@ -233,17 +271,17 @@ inline int squid_hud_draw(rv_cv *cv,
         return static_cast<int>(width);
     }
     const int max_px = static_cast<int>(width) - 2 * SQUID_HUD_MARGIN_PX;
+    const squid_hud_lines lines = squid_hud_layout(style, max_px, round, debug, show_debug);
 
+    // Same depth key: primitives of one bucket draw in submission order, so the backdrop goes first and the text lands on it.
+    int first_code = squid_hud_backdrop_put(cv, style, lines);
     int y = SQUID_HUD_Y;
-    const int hint_code = squid_hud_hint(cv, style, max_px, y, round);
-    int debug_code = RV_OK;
-    if (show_debug) {
-        y += SQUID_HUD_PANEL_GAP_LINES * squid_hud_line_step(style);
-        debug_code = squid_hud_debug_panel(cv, style, max_px, y, round, debug);
+    for (const std::string &line : lines) {
+        first_code = squid_hud_first(first_code, squid_hud_put(cv, style, SQUID_HUD_X, y, line));
+        y += squid_hud_line_step(style);
     }
-    const int code = squid_hud_first(hint_code, debug_code);
-    if (code != RV_OK) {
-        return code;
+    if (first_code != RV_OK) {
+        return first_code;
     }
     return RV_OK;
 }

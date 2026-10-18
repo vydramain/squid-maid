@@ -19,11 +19,16 @@ constexpr std::string_view SQUID_TEXT_PHASE_LANDED = "финал";
 
 // Leads: what the player does. The 5 is the beer goal in points, SQUID_BEER_GOAL in squid-params.hpp; these are plain
 // constants, so keep the number in step with it.
-constexpr std::string_view SQUID_TEXT_LEAD_PREPARE =
-    "Положи контроллер ровно и жми (A): горизонт - ноль наклона. Наклоняй его - предметы поплывут по куполу. "
-    "Толкай Алколдуном холодильники: при расколе из них выпадает пиво. "
-    "Набери 5 пива: пей бутылки Алколдуном, фиолетовая идёт за две - её выбивает только удар по самому тяжёлому холодильнику.";
-constexpr std::string_view SQUID_TEXT_LEAD_PLAY = "Цель: 5 пива - пей бутылки Алколдуном, фиолетовая идёт за две.";
+// One rule per line: '\n' is a hard break (squid_hud_wrap in squid-hud.hpp).
+constexpr std::string_view SQUID_TEXT_LEAD_PREPARE = "Положи контроллер ровно и жми (A).\n"
+                                                     "Наклоняй - предметы катятся по куполу.\n"
+                                                     "Бей Алколдуном холодильники - пиво.\n"
+                                                     "Алколдун пьёт пиво касанием.\n"
+                                                     "Жёлтое +1, фиолетовое +2.\n"
+                                                     "Фиолетовое - если бил сам Алколдун.\n"
+                                                     "Обломки слипаются в новый холодильник.\n"
+                                                     "Набери 5.";
+constexpr std::string_view SQUID_TEXT_LEAD_PLAY = "Жёлтое пиво +1, фиолетовое +2.";
 constexpr std::string_view SQUID_TEXT_LEAD_DESCENT = "Алколдун летит вниз, на центр тарелки.";
 constexpr std::string_view SQUID_TEXT_LEAD_LANDED = "Алколдун приземлился: раунд выигран.";
 
