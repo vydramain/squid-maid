@@ -205,7 +205,7 @@ public:
         note(step_code);
         // Only a frame that stepped the physics moves the bodies.
         const bool stepped = step_code == RV_OK && phase_before_step == squid_phase::play && game_.phase == squid_phase::play;
-        // The goal's frame: the third marked drink moves the phase from play into descent, and its bell plays.
+        // The goal's frame: the marked drink that reaches SQUID_BEER_GOAL moves play into descent, and its bell plays.
         const bool descended = phase_before_step == squid_phase::play && game_.phase == squid_phase::descent;
         // A frame the input refused may carry a non-finite stick or quaternion: the panel keeps the last target then.
         const squid_tilt target = target_tilt(state);

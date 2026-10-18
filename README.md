@@ -2,7 +2,7 @@
 
 A single-player game for the [3dmppc console](https://github.com/vydramain/3dmppc-polymer), built as a
 `.mppcdisc`. The player tilts the pad to roll balls of four sizes on a dome over a flat Earth, which stands on
-three elephants and a turtle. Alkoldun hits the refrigerators for beer bottles and drinks three marked ones to win.
+three elephants and a turtle. Alkoldun hits the refrigerators for beer bottles and drinks five marked ones to win.
 
 The in-game texts (Russian, in `src/squid-texts.hpp`) are the user guide.
 
