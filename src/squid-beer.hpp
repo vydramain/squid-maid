@@ -1,7 +1,8 @@
 #pragma once
 
 // Drinking a bottle: Alkoldun touching a bottle takes it out of the set, with no response on either body. The pair pass
-// removes the bottle and counts it; a marked one also counts toward SQUID_BEER_GOAL in the round.
+// removes the bottle and counts it; every drink adds points toward SQUID_BEER_GOAL: a marked one SQUID_BEER_POINTS_MARKED,
+// a plain one SQUID_BEER_POINTS_PLAIN.
 
 #include "squid-body.hpp"
 

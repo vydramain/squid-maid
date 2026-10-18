@@ -17,13 +17,13 @@ constexpr std::string_view SQUID_TEXT_PHASE_PAUSE = "пауза";
 constexpr std::string_view SQUID_TEXT_PHASE_DESCENT = "спуск";
 constexpr std::string_view SQUID_TEXT_PHASE_LANDED = "финал";
 
-// Leads: what the player does. The 5 is the bottle goal, SQUID_BEER_GOAL in squid-params.hpp; these are plain
+// Leads: what the player does. The 5 is the beer goal in points, SQUID_BEER_GOAL in squid-params.hpp; these are plain
 // constants, so keep the number in step with it.
 constexpr std::string_view SQUID_TEXT_LEAD_PREPARE =
     "Положи контроллер ровно и жми (A): горизонт - ноль наклона. Наклоняй его - предметы поплывут по куполу. "
     "Толкай Алколдуном холодильники: при расколе из них выпадает пиво. "
-    "Выпей 5 меченых бутылок - их выбивает только удар по самому тяжёлому холодильнику.";
-constexpr std::string_view SQUID_TEXT_LEAD_PLAY = "Цель: 5 меченых бутылок - бей Алколдуном самый тяжёлый холодильник.";
+    "Набери 5 пива: пей бутылки Алколдуном, фиолетовая идёт за две - её выбивает только удар по самому тяжёлому холодильнику.";
+constexpr std::string_view SQUID_TEXT_LEAD_PLAY = "Цель: 5 пива - пей бутылки Алколдуном, фиолетовая идёт за две.";
 constexpr std::string_view SQUID_TEXT_LEAD_DESCENT = "Алколдун летит вниз, на центр тарелки.";
 constexpr std::string_view SQUID_TEXT_LEAD_LANDED = "Алколдун приземлился: раунд выигран.";
 
@@ -35,7 +35,7 @@ constexpr std::string_view SQUID_TEXT_HINT_PAUSE = "(View) продолжить 
 constexpr std::string_view SQUID_TEXT_HINT_DESCENT = "(View) пауза";
 constexpr std::string_view SQUID_TEXT_HINT_LANDED = "(B) рестарт";
 
-// Beer counter: the first {} is the bottles drunk, the second the goal.
+// Beer counter: the first {} is the beer points, the second the goal.
 constexpr std::string_view SQUID_TEXT_BEER = "Пиво {} / {}";
 
 // Debug panel. Axis names and source names are the labels the tilt readout uses.

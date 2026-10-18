@@ -57,8 +57,12 @@ constexpr float SQUID_BALL_RADIUS[] = { 0.225f, 0.285f, 0.36f, 0.45f };
 // 19 percent after a full split.
 constexpr int SQUID_START_BALLS = 10;
 
-// Marked bottles Alkoldun drinks to finish the round; the HUD counter and the lead texts show it.
+// Beer points Alkoldun drinks to finish the round; the HUD counter and the lead texts show it.
 constexpr int SQUID_BEER_GOAL = 5;
+
+// Points per drunk bottle: a violet (marked) one is worth two plain ones, so it is the faster way to the goal.
+constexpr int SQUID_BEER_POINTS_PLAIN = 1;
+constexpr int SQUID_BEER_POINTS_MARKED = 2;
 
 // Length of the finale flight in seconds: Alkoldun flies from the dome to the plate centre in this time after the goal.
 constexpr float SQUID_DESCENT_S = 3.0f;

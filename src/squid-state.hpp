@@ -138,7 +138,7 @@ struct squid_game {
     // Splits and absorbs since the round start: the physics frames and the split-all command both add to them.
     int round_splits = 0;
     int round_absorbs = 0;
-    // Marked bottles drunk this round; each play frame adds its marked drinks.
+    // Beer points this round; each play frame adds its drinks at SQUID_BEER_POINTS_PLAIN and SQUID_BEER_POINTS_MARKED.
     int beer_drunk = 0;
     squid_descent descent{}; // Taken at the goal, cleared by restart.
     // Draws the body drift in play; reseeded with the layout seed on every build, so a round and its restart repeat.
@@ -445,7 +445,8 @@ inline int squid_game_play(squid_game &g, const rv_istate &state, uint64_t abili
     g.events = counts;
     g.round_splits += counts.splits;
     g.round_absorbs += counts.absorbs;
-    g.beer_drunk += counts.marked_drunk;
+    const int plain_drunk = counts.bottles_drunk - counts.marked_drunk;
+    g.beer_drunk += plain_drunk * SQUID_BEER_POINTS_PLAIN + counts.marked_drunk * SQUID_BEER_POINTS_MARKED;
     if (g.beer_drunk >= SQUID_BEER_GOAL) {
         const int started = squid_descent_start(g.bodies, g.descent);
         return started != RV_OK ? started : squid_game_fire(g, squid_event::goal_reached);
