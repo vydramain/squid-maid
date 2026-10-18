@@ -9,11 +9,13 @@ sources = ["src/*.cpp"]
 files = ["scenes/*.scene.toml"]
 
 [sounds]
-files = ["assets/snd/*.wav"]
+# Effects only: they stay resident in sound memory. The music is in [music], not here.
+files = ["assets/snd/sfx_*.wav"]
 
 [music]
-# Each .mp3 is baked to a headerless S16LE mono 44100 Hz "<stem>.pcm" drive asset, streamed whole by the game.
-files = ["assets/music/*.mp3"]
+# The six looping sections, 24-bit WAV, baked at burn to headerless S16LE mono 44100 Hz "<stem>.pcm" drive assets, read
+# whole by the game (not in sound memory). The game plays them in its playlist order (src/squid-ambient.hpp).
+files = ["assets/snd/mus_*.wav"]
 
 [textures]
 # No separate textures yet; format is still required by [models].

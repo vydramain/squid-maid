@@ -24,8 +24,9 @@ Pad buttons only. The names are the pad's labels, as in the in-game hints.
 
 ## Sound
 
-Effects are the WAV files in `assets/snd`. The ambient track, `assets/music/ambient.mp3`, is declared in the
-`[music]` section of `disc.toml`: the burner bakes it to PCM and the game streams it.
+Effects are the `sfx_*.wav` files in `assets/snd`, resident in sound memory. The music is six looping sections,
+`assets/snd/mus_*.wav`, declared in the `[music]` section of `disc.toml`: the burner bakes each 24-bit WAV to PCM. The
+sections stay in main RAM; the stream plays through two one-second slots in sound memory.
 
 ## Running
 
@@ -50,7 +51,7 @@ mppcburner build <disc-directory> -o squid-maid.mppcdisc
 ```
 disc.toml   the disc manifest: sources, sounds, music, textures and models for the burner
 src/        the game's C++ sources, burned per disc.toml
-assets/     sounds (snd), ambient music (music), models, and the Earth's picture (tex, used by models/earth.gltf)
+assets/     sounds and music (snd), models, and the Earth's picture (tex, used by models/earth.gltf)
 scenes/     the game's scene, carried by the disc as an asset per disc.toml
 docs/       the v0.1 design document
 ```

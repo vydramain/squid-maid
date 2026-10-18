@@ -1,12 +1,13 @@
 #pragma once
 
-// The ambient track: the disc's baked music streamed on its own voice for the whole game, looping. Two sound slots hold
-// the stream: the voice plays one and repeats into the other, whose start is marked; each mark refills the slot the
-// voice has left with the track's next chunk.
+// The ambient music: the disc's six baked sections played in a fixed cycle on their own voice for the whole game, looping.
+// Two sound slots hold the stream: the voice plays one and repeats into the other, whose start is marked; each mark
+// refills the slot the voice has left with the cycle's next chunk.
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <new>
 #include <vector>
 
@@ -26,8 +27,17 @@ namespace squid
 // Log tag of ambient messages.
 inline constexpr const char *squid_ambient_tag = "ambient";
 
-// The track as the burner bakes it: disc.toml [music] turns assets/music/ambient.mp3 into this drive asset.
-inline constexpr const char *SQUID_AMBIENT_ASSET = "ambient.pcm";
+// The cycle, in play order: each name is a disc.toml [music] section baked from assets/snd/mus_*.wav. The owner reorders
+// it here; equal section lengths make the cycle gapless.
+inline constexpr const char *SQUID_AMBIENT_PLAYLIST[] = {
+    "mus_intro.pcm",
+    "mus_intro_harmonic.pcm",
+    "mus_intro_nasral.pcm",
+    "mus_riff_sparce.pcm",
+    "mus_riff_full.pcm",
+    "mus_interlude.pcm",
+};
+constexpr std::size_t SQUID_AMBIENT_SECTIONS = std::size(SQUID_AMBIENT_PLAYLIST);
 
 // The baked format: 44100 Hz mono, 16-bit samples.
 constexpr int64_t SQUID_AMBIENT_RATE = 44100;
@@ -50,8 +60,8 @@ constexpr int16_t SQUID_AMBIENT_VOLUME = 10000;
 // A mark at address 0 clears the mark (rv_ca.h).
 constexpr int64_t SQUID_AMBIENT_NO_MARK = 0;
 
-// The stream's state. track is the whole track in main RAM, about 132 MB for this 25-minute track: rv_cd_asset_read takes
-// whole entries only, and this memory is outside the console's sound budget. next_slot is the slot the voice reads after
+// The stream's state. track holds the six sections in main RAM, 6 x 846720 bytes: rv_cd_asset_read takes whole entries
+// only, and this memory is outside the console's sound budget. next_slot is the slot the voice reads after
 // the current one; position is the track byte the next chunk starts at. slots_taken and voice_playing record what init
 // took, so a failed init can undo it. refill_failing is set while refills fail, so the first failure logs once.
 struct squid_ambient {
@@ -120,33 +130,84 @@ inline int squid_ambient_resize(std::vector<uint8_t> &bytes, int64_t size, const
     return RV_OK;
 }
 
-// Reads the whole track into main RAM. Returns RV_OK, or the failing call's code with the cause in the log.
-inline int squid_ambient_load(rv_pdko *pdk, squid_ambient &ambient)
+// Opens a section asset and returns its size in `size`. Returns RV_OK, or the failing call's code with the cause in the log.
+inline int squid_ambient_probe(rv_cd *cd, const char *name, int64_t &size)
 {
-    rv_cd *cd = rv_pdko_cd(pdk);
-    const int64_t handle = rv_cd_asset_open(cd, SQUID_AMBIENT_ASSET);
+    const int64_t handle = rv_cd_asset_open(cd, name);
     if (handle < 0) {
-        RV_LOG_ERR(squid_ambient_tag, "track {} is not on the disc: code {}", SQUID_AMBIENT_ASSET, handle);
+        RV_LOG_ERR(squid_ambient_tag, "track {} is not on the disc: code {}", name, handle);
         return static_cast<int>(handle);
     }
-    const int64_t size = rv_cd_asset_size(cd, handle);
+    size = rv_cd_asset_size(cd, handle);
     if (size < 0) {
-        RV_LOG_ERR(squid_ambient_tag, "track {} has no size: code {}", SQUID_AMBIENT_ASSET, size);
+        RV_LOG_ERR(squid_ambient_tag, "track {} has no size: code {}", name, size);
         return static_cast<int>(size);
     }
     // The wrap in squid_ambient_fill needs a non-empty track of whole samples.
     if (size == 0 || size % SQUID_AMBIENT_SAMPLE_BYTES != 0) {
-        RV_LOG_ERR(squid_ambient_tag, "track {} is {} bytes: not whole 16-bit samples", SQUID_AMBIENT_ASSET, size);
+        RV_LOG_ERR(squid_ambient_tag, "track {} is {} bytes: not whole 16-bit samples", name, size);
         return RV_ERR_INVAL;
     }
-    const int resize_code = squid_ambient_resize(ambient.track, size, SQUID_AMBIENT_ASSET);
+    return RV_OK;
+}
+
+// Reads a whole section asset into dst. Returns RV_OK, or the failing call's code with the cause in the log.
+inline int squid_ambient_read_section(rv_cd *cd, const char *name, uint8_t *dst, int64_t size)
+{
+    const int64_t handle = rv_cd_asset_open(cd, name);
+    if (handle < 0) {
+        RV_LOG_ERR(squid_ambient_tag, "track {} is not on the disc: code {}", name, handle);
+        return static_cast<int>(handle);
+    }
+    const int64_t read = rv_cd_asset_read(cd, handle, dst, size);
+    if (read != size) {
+        RV_LOG_ERR(squid_ambient_tag, "track {} read {} of {} bytes", name, read, size);
+        return RV_ERR_IO;
+    }
+    return RV_OK;
+}
+
+// Reads the six sections into main RAM in playlist order. The sections must share one size: the read uses a fixed stride
+// (section * section_bytes). The wrap lands on a section start for any total. Returns RV_OK, or the failing call's code
+// with the cause in the log.
+inline int squid_ambient_load(rv_pdko *pdk, squid_ambient &ambient)
+{
+    rv_cd *cd = rv_pdko_cd(pdk);
+    const char *first = SQUID_AMBIENT_PLAYLIST[0];
+    int64_t section_size = 0;
+    for (std::size_t section = 0; section < SQUID_AMBIENT_SECTIONS; ++section) {
+        int64_t size = 0;
+        const int probe_code = squid_ambient_probe(cd, SQUID_AMBIENT_PLAYLIST[section], size);
+        if (probe_code != RV_OK) {
+            return probe_code;
+        }
+        if (section == 0) {
+            section_size = size;
+        }
+        if (size != section_size) {
+            RV_LOG_ERR(squid_ambient_tag,
+                "track {} is {} bytes, not the {} bytes of {}: the sections must be equal",
+                SQUID_AMBIENT_PLAYLIST[section],
+                size,
+                section_size,
+                first);
+            return RV_ERR_INVAL;
+        }
+    }
+    const int64_t total = section_size * static_cast<int64_t>(SQUID_AMBIENT_SECTIONS);
+    const int resize_code = squid_ambient_resize(ambient.track, total, "playlist");
     if (resize_code != RV_OK) {
         return resize_code;
     }
-    const int64_t read = rv_cd_asset_read(cd, handle, ambient.track.data(), size);
-    if (read != size) {
-        RV_LOG_ERR(squid_ambient_tag, "track {} read {} of {} bytes", SQUID_AMBIENT_ASSET, read, size);
-        return RV_ERR_IO;
+    const std::size_t section_bytes = static_cast<std::size_t>(section_size);
+    for (std::size_t section = 0; section < SQUID_AMBIENT_SECTIONS; ++section) {
+        const int read_code = squid_ambient_read_section(cd,
+            SQUID_AMBIENT_PLAYLIST[section],
+            ambient.track.data() + section * section_bytes,
+            section_size);
+        if (read_code != RV_OK) {
+            return read_code;
+        }
     }
     return RV_OK;
 }
@@ -255,7 +316,8 @@ inline int squid_ambient_init(rv_pdko *pdk, squid_ambient &ambient)
         return code;
     }
     RV_LOG_INFO(squid_ambient_tag,
-        "track {} bytes, streamed in {} byte chunks, looping on voice {}",
+        "{} sections, {} bytes in main RAM, streamed in {} byte chunks, looping on voice {}",
+        SQUID_AMBIENT_SECTIONS,
         ambient.track.size(),
         SQUID_AMBIENT_CHUNK_BYTES,
         SQUID_AMBIENT_VOICE);
