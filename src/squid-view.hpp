@@ -57,11 +57,23 @@ static_assert(squid_view_table_complete(), "every size's model names must be set
 // Model file of Alkoldun; also the placeholder every pool entity is loaded with before its first frame.
 inline constexpr const char *SQUID_VIEW_ALKOLDUN_MODEL = "alkoldun.mppcmod";
 
-// Model file of a body by its size and variant, or the Alkoldun model. A refused body leaves model untouched.
+// Model file of a bottle; like the balls, it is made for 4/3 of its collision radius.
+inline constexpr const char *SQUID_VIEW_BOTTLE_MODEL = "bottle.mppcmod";
+
+// Fixed model by kind, indexed by squid_kind; nullptr means the ball table decides.
+inline constexpr const char *SQUID_VIEW_KIND_MODELS[] = { nullptr, SQUID_VIEW_ALKOLDUN_MODEL, SQUID_VIEW_BOTTLE_MODEL };
+static_assert(std::size(SQUID_VIEW_KIND_MODELS) == static_cast<std::size_t>(squid_kind::bottle) + 1);
+
+// Model file of a body by its kind, or by its size and variant for a ball. A refused body leaves model untouched.
 inline int squid_view_model(const squid_body &body, const char *&model)
 {
-    if (body.kind == squid_kind::alkoldun) {
-        model = SQUID_VIEW_ALKOLDUN_MODEL;
+    const std::size_t kind = static_cast<std::size_t>(body.kind);
+    if (kind >= std::size(SQUID_VIEW_KIND_MODELS)) {
+        RV_LOG_ERR(SQUID_VIEW_TAG, "body model refused: kind {} is unknown", kind);
+        return RV_ERR_INVAL;
+    }
+    if (SQUID_VIEW_KIND_MODELS[kind] != nullptr) {
+        model = SQUID_VIEW_KIND_MODELS[kind];
         return RV_OK;
     }
     int size = 0;
@@ -81,7 +93,7 @@ inline int squid_view_model(const squid_body &body, const char *&model)
 }
 
 // Writes the body's model, position (its dome centre, lifted by its hover) and rotation to its entity. A refusal keeps
-// the entity's previous pose; its cause is logged where it is found.
+// the entity's previous pose and model; its cause is logged where it is found.
 inline int squid_view_body_set(rv_pdklib::ecs_world &world, rv_pdklib::ecs_id id, const squid_body &body)
 {
     float radius = 0.0f;
@@ -156,8 +168,7 @@ inline int squid_view_update(rv_pdklib::ecs_world &world, const squid_view_pool 
     int first = RV_OK;
     for (int i = 0; i < SQUID_BODY_CAPACITY; ++i) {
         const squid_view_slot &slot = pool.slots[i];
-        // Bottles stay hidden until the bottle view lands: a refused pose would leave the slot on a frozen model.
-        const bool shown = i < bodies.count && bodies.items[i].kind != squid_kind::bottle;
+        const bool shown = i < bodies.count;
         const int hidden_code = squid_scene_body_hidden(world, slot.id, !shown);
         const int pose_code = shown ? squid_view_body_set(world, slot.id, bodies.items[i]) : RV_OK;
         const int code = hidden_code != RV_OK ? hidden_code : pose_code;
