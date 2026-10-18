@@ -9,6 +9,7 @@
 #include <numbers>
 #include <random>
 
+#include "squid-beer.hpp"
 #include "squid-body.hpp"
 #include "squid-input.hpp"
 #include "squid-params.hpp"
@@ -43,13 +44,16 @@ struct squid_bodies {
 
 // Splits, absorbs and bounces, counted over a pass, a substep or a frame; the main loop plays one sound per frame, by priority,
 // from them. A bounce is counted only at an approach of SQUID_BOUNCE_SOUND_MIN_SPEED or more. A bottle contact counts
-// in bottle_bounces, not bounces; a bottle born at a fridge split counts in bottles_born.
+// in bottle_bounces, not bounces; a bottle born at a fridge split counts in bottles_born. A drink counts in
+// bottles_drunk, and in marked_drunk when the bottle is marked.
 struct squid_event_counts {
     int splits = 0;
     int absorbs = 0;
     int bounces = 0;
     int bottles_born = 0;
     int bottle_bounces = 0;
+    int bottles_drunk = 0;
+    int marked_drunk = 0;
 };
 
 // A touching approaching pair with a split or an absorb, recorded in the pair pass and applied after its loops. The
@@ -226,7 +230,7 @@ inline int squid_heaviest_ball(const squid_bodies &set)
 
 // Bottle of a fridge split at the contact of e, with the hover of the split half at index from. Refused with the set
 // unchanged at SQUID_BOTTLE_MAX bottles alive or at capacity; the split itself stands. The bottle starts at the contact;
-// the next pair pass pushes it out of the partner.
+// the next pair pass pushes a fresh bottle out of any partner; after SQUID_BOTTLE_FRESH_S Alkoldun drinks it on touch.
 inline int squid_bottle_birth(squid_bodies &set, int from, const squid_pair_event &e, bool marked)
 {
     int alive = 0;
@@ -267,12 +271,32 @@ inline void squid_event_split(squid_bodies &set, int i, const squid_pair_event &
     }
 }
 
+// Split-all split of the body at index i along normal. A fridge (size 4) also gives an unmarked bottle at the centre of
+// the split, where the halves meet, with the parent's velocity; a refused bottle leaves the split standing.
+inline int squid_split_all_split(squid_bodies &set, int i, squid_flat normal)
+{
+    const bool fridge = set.items[i].mass == SQUID_BALL_MASS_MAX;
+    // The split moves the parent to the lo half, so the centre and velocity are taken before it.
+    squid_pair_event e{};
+    e.contact = set.items[i].pos;
+    e.cm_vel = set.items[i].vel;
+    const int rc = squid_split_body(set, i, normal);
+    if (rc != RV_OK) {
+        return rc;
+    }
+    if (fridge) {
+        squid_bottle_birth(set, i, e, false);
+    }
+    return RV_OK;
+}
+
 // Ball-ball contact over all pairs (O(n^2), n <= SQUID_BODY_CAPACITY). A touching pair is separated along the normal
 // in inverse proportion to mass and, if approaching, bounces with SQUID_BALL_RESTITUTION; momentum is conserved.
 // An approaching pair whose outcome splits or absorbs is recorded here and applied after the loops, so indices do not
 // shift inside them; an absorbing pair is neither separated nor bounced. A body takes part in one event per pass, the first in
 // i/j order; later events with it are dropped and the pair bounces. Called only after squid_substep's size check, so every body
-// has a radius.
+// has a radius. A touching Alkoldun and aged bottle is a drink: the bottle is removed and the pair takes no response; a
+// fresh bottle bounces off Alkoldun, which does not move.
 inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
 {
     bool taken[SQUID_BODY_CAPACITY] = {};
@@ -283,6 +307,10 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
     const int heaviest = squid_heaviest_ball(set);
     for (int i = 0; i < set.count; ++i) {
         for (int j = i + 1; j < set.count; ++j) {
+            // A drunk bottle is still in the set until the compaction; it takes no more contacts this pass.
+            if (removed[i] || removed[j]) {
+                continue;
+            }
             squid_body &a = set.items[i];
             squid_body &b = set.items[j];
             const float dx = b.pos.x - a.pos.x;
@@ -294,11 +322,21 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
             if (dist >= reach) {
                 continue;
             }
+            // Touching Alkoldun and drinkable (aged) bottle: the bottle is drunk, with no push and no bounce on either body.
+            if (squid_is_drink(a, b)) {
+                const int bottle = a.kind == squid_kind::bottle ? i : j;
+                removed[bottle] = true;
+                ++counts.bottles_drunk;
+                counts.marked_drunk += set.items[bottle].marked ? 1 : 0;
+                continue;
+            }
             const bool coincident = dist < SQUID_PAIR_COINCIDENT_EPS;
             const float nx = coincident ? 1.0f : dx / dist;
             const float nz = coincident ? 0.0f : dz / dist;
             const float ma = static_cast<float>(a.mass);
             const float mb = static_cast<float>(b.mass);
+            const float wa = squid_inverse_mass(a, b);
+            const float wb = squid_inverse_mass(b, a);
             const float vn = (b.vel.x - a.vel.x) * nx + (b.vel.z - a.vel.z) * nz;
             const bool approaching = vn < 0.0f;
             squid_pair_outcome out{};
@@ -320,10 +358,10 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
                 continue;
             }
             const float push = reach - dist;
-            a.pos.x -= nx * push * mb / (ma + mb);
-            a.pos.z -= nz * push * mb / (ma + mb);
-            b.pos.x += nx * push * ma / (ma + mb);
-            b.pos.z += nz * push * ma / (ma + mb);
+            a.pos.x -= nx * push * wa / (wa + wb);
+            a.pos.z -= nz * push * wa / (wa + wb);
+            b.pos.x += nx * push * wb / (wa + wb);
+            b.pos.z += nz * push * wb / (wa + wb);
             if (!approaching) {
                 continue;
             }
@@ -342,11 +380,11 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
             const float slip = -slide - a.spin.y * ra - b.spin.y * rb;
             a.spin.y += SQUID_SPIN_IMPACT_GAIN * slip / (2.0f * ra);
             b.spin.y += SQUID_SPIN_IMPACT_GAIN * slip / (2.0f * rb);
-            const float impulse = -(1.0f + SQUID_BALL_RESTITUTION) * vn / (1.0f / ma + 1.0f / mb);
-            a.vel.x -= impulse / ma * nx;
-            a.vel.z -= impulse / ma * nz;
-            b.vel.x += impulse / mb * nx;
-            b.vel.z += impulse / mb * nz;
+            const float impulse = -(1.0f + SQUID_BALL_RESTITUTION) * vn / (wa + wb);
+            a.vel.x -= impulse * wa * nx;
+            a.vel.z -= impulse * wa * nz;
+            b.vel.x += impulse * wb * nx;
+            b.vel.z += impulse * wb * nz;
         }
     }
     for (int k = 0; k < event_count; ++k) {
@@ -417,6 +455,7 @@ inline int squid_substep(squid_bodies &set, squid_flat accel, float h, squid_eve
     for (int i = 0; i < set.count; ++i) {
         squid_drift_step(set.items[i], h, rng);
         squid_body_move(set.items[i], accel, h, damping);
+        set.items[i].age += h;
     }
     squid_pair_step(set, counts);
     for (int i = 0; i < set.count; ++i) {

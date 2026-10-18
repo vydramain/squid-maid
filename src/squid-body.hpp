@@ -74,6 +74,8 @@ struct squid_body {
     float hover_period = SQUID_HOVER_PERIOD_MIN_S;
     // Bottles only: set at birth when Alkoldun's hit split the heaviest ball; no ball reads it.
     bool marked = false;
+    // Seconds since birth, advanced for every body; only a bottle reads it (drinkable from SQUID_BOTTLE_FRESH_S).
+    float age = 0;
 };
 
 // Outcome of a touching pair: which bodies split, and which one is absorbed. Every touching pair that is not an

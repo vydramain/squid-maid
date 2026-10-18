@@ -130,7 +130,7 @@ struct squid_game {
     // Splits and absorbs since the round start: the physics frames and the split-all command both add to them.
     int round_splits = 0;
     int round_absorbs = 0;
-    // Marked bottles drunk this round, filled by the bottles later.
+    // Marked bottles drunk this round; each play frame adds its marked drinks.
     int beer_drunk = 0;
     // Draws the body drift in play; reseeded with the layout seed on every build, so a round and its restart repeat.
     std::minstd_rand drift_rng{ SQUID_LAYOUT_SEED };
@@ -295,7 +295,8 @@ inline squid_census squid_census_of(const squid_bodies &set)
     squid_census census{};
     for (int i = 0; i < set.count; ++i) {
         const squid_body &b = set.items[i];
-        census.total_mass += b.mass;
+        // Bottles are outside the ball budget, so the census leaves them out.
+        census.total_mass += b.kind == squid_kind::bottle ? 0 : b.mass;
         int size = 0;
         if (b.kind == squid_kind::ball && squid_body_size(b, size) == RV_OK) {
             ++census.balls[static_cast<std::size_t>(size - 1)];
@@ -318,7 +319,8 @@ inline constexpr squid_flat SQUID_SPLIT_ALL_NORMAL{ 1.0f, 0.0f };
 
 // Splits every splittable ball once, in index order; the halves are appended, so none is split twice. The physics pushes
 // apart any overlap the halves make. Refused whole, with the set unchanged, when the set has no room for every split. A
-// split refused midway stops the command: splits holds the splits made, and the set holds them too.
+// split refused midway stops the command: splits holds the splits made, and the set holds them too. A fridge split also
+// gives an unmarked bottle, as in a contact split.
 inline int squid_split_all(squid_bodies &set, int &splits)
 {
     splits = 0;
@@ -340,7 +342,7 @@ inline int squid_split_all(squid_bodies &set, int &splits)
             continue;
         }
         // Room was checked above, and every mass in the set is 1..8, so a refusal here cannot happen; it is still logged.
-        const int rc = squid_split_body(set, i, SQUID_SPLIT_ALL_NORMAL);
+        const int rc = squid_split_all_split(set, i, SQUID_SPLIT_ALL_NORMAL);
         if (rc != RV_OK) {
             RV_LOG_ERR(squid_state_tag, "split all stopped after {} splits: rv_err {}", splits, rc);
             return rc;
@@ -451,6 +453,7 @@ inline int squid_game_play(squid_game &g, const rv_istate &state, uint64_t abili
     g.events = counts;
     g.round_splits += counts.splits;
     g.round_absorbs += counts.absorbs;
+    g.beer_drunk += counts.marked_drunk;
     return RV_OK;
 }
 

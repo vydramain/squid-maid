@@ -65,6 +65,10 @@ constexpr float SQUID_BOTTLE_RADIUS = 0.225f;
 // Bottles alive at once; a fridge split with this many alive gives no bottle, and the split still happens.
 constexpr int SQUID_BOTTLE_MAX = 16;
 
+// Seconds a bottle is fresh after birth: Alkoldun cannot drink it before, so the player chases the bottle and does not
+// get it from the hit that split the fridge. A fresh bottle bounces off Alkoldun, which does not move.
+constexpr float SQUID_BOTTLE_FRESH_S = 0.5f;
+
 // Gravity along the tilted disc, in units/s^2; at 35 deg tilt a = 3.44 and centre to edge (4.71) without damping
 // takes 1.65 s, so the tilt is felt at once and does not throw the balls.
 constexpr float SQUID_GRAVITY = 6.0f;
