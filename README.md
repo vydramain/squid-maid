@@ -12,9 +12,9 @@ Pad buttons only. The names are the pad's labels, as in the in-game hints.
 
 | Button | Phase | Action |
 | --- | --- | --- |
-| A (SOUTH) | prepare | calibrate the neutral pose (gyroscope only) and get ready |
+| A (SOUTH) | prepare | get ready; a pad lying flat is level |
 | A (SOUTH) | ready | start the round |
-| Y (NORTH) | ready, pause, descent pause | recalibrate |
+| Y (NORTH) | ready, pause, descent pause | make the current pad pose level (gyroscope only) |
 | B (EAST) | ready, pause, descent pause, landed | restart |
 | X (WEST) | any | level the D-pad keys to zero; the left stick still tilts |
 | View | play, descent | pause |
