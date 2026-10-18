@@ -37,8 +37,8 @@ constexpr int SQUID_ALKOLDUN_SIZE = 3;
 // Mass of a bottle in collisions; bottles are outside the ball mass budget, so this never enters a total.
 constexpr int SQUID_BOTTLE_MASS = 1;
 
-// Model variants chosen at birth, 0..4 (the largest size's count); display only. A smaller size takes the variant
-// modulo its own count (squid-view.hpp).
+// Model variants chosen at birth, 0..4; display only. squid-view.hpp sets each size's count, and a size takes the
+// variant modulo its own count.
 constexpr int SQUID_MODEL_VARIANTS = 5;
 
 // Display rotation at birth: the identity quaternion (x, y, z, w).
