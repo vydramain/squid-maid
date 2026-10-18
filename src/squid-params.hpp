@@ -53,9 +53,37 @@ constexpr float SQUID_DISC_RADIUS = SQUID_DOME_RADIUS * SQUID_DISC_EDGE_DEG * st
 // Size 4 is about 20 px across on 320x240 at 21.8 px per unit, size 1 about 10 px.
 constexpr float SQUID_BALL_RADIUS[] = { 0.225f, 0.285f, 0.36f, 0.45f };
 
-// Balls of size 4 at the start; with Alkoldun the total mass is 84 smallest units: 9.7 percent of the disc area,
-// 19 percent after a full split.
-constexpr int SQUID_START_BALLS = 10;
+// One row of the start composition: count balls of the given mass.
+struct squid_start_row {
+    int count;
+    int mass;
+};
+
+// Start balls: four fridges (mass 8, size 4) and six halves (mass 4, size 3). A half is half a fridge, so the start reads as
+// four refrigerators; a fifth is only a possibility, built by absorbing pieces, not placed at the start.
+inline constexpr squid_start_row SQUID_START_ROWS[] = { { 4, 8 }, { 6, 4 } };
+
+// Number of start balls, Alkoldun not included.
+constexpr int squid_start_ball_count()
+{
+    int count = 0;
+    for (const squid_start_row &row : SQUID_START_ROWS) {
+        count += row.count;
+    }
+    return count;
+}
+
+// Total mass of the start balls in smallest units, Alkoldun not included; with Alkoldun it is the body budget.
+constexpr int squid_start_ball_mass()
+{
+    int mass = 0;
+    for (const squid_start_row &row : SQUID_START_ROWS) {
+        mass += row.count * row.mass;
+    }
+    return mass;
+}
+
+constexpr int SQUID_START_BALLS = squid_start_ball_count();
 
 // Beer points Alkoldun drinks to finish the round; the HUD counter and the lead texts show it.
 constexpr int SQUID_BEER_GOAL = 5;

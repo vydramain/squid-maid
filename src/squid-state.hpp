@@ -145,7 +145,7 @@ struct squid_game {
     std::minstd_rand drift_rng{ SQUID_LAYOUT_SEED };
 };
 
-// The start layout has one Alkoldun and balls of the largest mass; the body capacity must hold them.
+// The start layout has one Alkoldun and the start balls; the body capacity must hold them.
 static_assert(SQUID_START_BALLS + 1 <= SQUID_BODY_CAPACITY, "the start layout must fit the body set");
 
 // Variant of a fresh body, drawn from the layout generator.
@@ -196,7 +196,7 @@ inline int squid_layout_place(squid_bodies &set, std::minstd_rand &rng, squid_bo
     return RV_ERR_NOMEM;
 }
 
-// The start layout: Alkoldun at the centre, then SQUID_START_BALLS balls of the largest mass around it. Built into a fresh
+// The start layout: Alkoldun at the centre, then the balls of SQUID_START_ROWS around it, row by row. Built into a fresh
 // set and copied out only when every body fits, so a refused layout leaves the old set as it was.
 inline int squid_layout_build(squid_bodies &out)
 {
@@ -207,14 +207,16 @@ inline int squid_layout_build(squid_bodies &out)
         return RV_ERR_INVAL;
     }
     set.items[set.count++] = alkoldun;
-    for (int i = 0; i < SQUID_START_BALLS; ++i) {
-        squid_body ball{};
-        if (squid_body_ball(ball, SQUID_BALL_MASS_MAX, squid_layout_variant(rng), squid_flat{}) != RV_OK) {
-            return RV_ERR_INVAL;
-        }
-        const int placed = squid_layout_place(set, rng, ball);
-        if (placed != RV_OK) {
-            return placed;
+    for (const squid_start_row &row : SQUID_START_ROWS) {
+        for (int i = 0; i < row.count; ++i) {
+            squid_body ball{};
+            if (squid_body_ball(ball, row.mass, squid_layout_variant(rng), squid_flat{}) != RV_OK) {
+                return RV_ERR_INVAL;
+            }
+            const int placed = squid_layout_place(set, rng, ball);
+            if (placed != RV_OK) {
+                return placed;
+            }
         }
     }
     out = set;

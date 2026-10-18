@@ -22,9 +22,9 @@ namespace squid
 constexpr const char *SQUID_PHYSICS_TAG = "physics";
 
 // Every ball has mass >= SQUID_BALL_MASS_MIN and the ball mass is conserved, so the start total bounds the balls: the
-// start balls (mass SQUID_BALL_MASS_MAX each) and Alkoldun make 84 smallest units, so at most 84 balls. Bottles are
-// outside that budget and never split or absorb; at most SQUID_BOTTLE_MAX of them live.
-constexpr int SQUID_BODY_CAPACITY = SQUID_START_BALLS * SQUID_BALL_MASS_MAX + SQUID_ALKOLDUN_MASS + SQUID_BOTTLE_MAX;
+// start balls and Alkoldun make squid_start_ball_mass() + SQUID_ALKOLDUN_MASS smallest units, so at most that many bodies.
+// Bottles are outside that budget and never split or absorb; at most SQUID_BOTTLE_MAX of them live.
+constexpr int SQUID_BODY_CAPACITY = squid_start_ball_mass() + SQUID_ALKOLDUN_MASS + SQUID_BOTTLE_MAX;
 
 // 60 Hz frame; a frame runs SQUID_SUBSTEPS equal substeps.
 constexpr float SQUID_FRAME_S = 1.0f / 60.0f;
@@ -158,9 +158,9 @@ inline void squid_edge_step(squid_body &b)
 
 // Split of a ball in place: floor(m/2) keeps slot i and ceil(m/2) is appended. The halves touch along the tangent of the
 // contact, keep the centre of mass, and move apart at SQUID_SPLIT_SEPARATION_SPEED shared inversely to mass, so the
-// momentum of the parent is kept. Skipped with a warning at capacity: unreachable in practice (Alkoldun always exists, so
-// at most 81 non-bottle bodies, 80 balls of mass 1 and Alkoldun, plus 16 bottles make 97 < 100), kept as a guard. An Alkoldun
-// never gets here (its rows never split).
+// momentum of the parent is kept. Skipped with a warning at capacity: unreachable in practice (the non-bottle bodies stay
+// within squid_start_ball_mass() + SQUID_ALKOLDUN_MASS, and the bottles add at most SQUID_BOTTLE_MAX), kept as a guard.
+// An Alkoldun never gets here (its rows never split).
 inline int squid_split_body(squid_bodies &set, int i, squid_flat normal)
 {
     if (set.count >= SQUID_BODY_CAPACITY) {
@@ -467,8 +467,9 @@ inline int squid_substep(squid_bodies &set, squid_flat accel, float h, squid_eve
 
 // One frame of dt seconds as SQUID_SUBSTEPS substeps; counts holds this frame's splits and absorbs. Refused with state
 // untouched on a non-positive or non-finite dt or a non-finite tilt. A count or size refusal comes from the first
-// substep, before any move. Later substeps cannot refuse: masses stay in 1..8 and their total is at most 84, which
-// bounds the count, so no refusal is reachable mid-frame. The drift draws come from rng, which the round owns.
+// substep, before any move. Later substeps cannot refuse: masses stay in 1..8 and their total is at most
+// squid_start_ball_mass() + SQUID_ALKOLDUN_MASS, which bounds the count, so no refusal is reachable mid-frame. The drift
+// draws come from rng, which the round owns.
 inline int squid_physics_frame(squid_bodies &set, squid_tilt tilt, float dt, squid_event_counts &counts, std::minstd_rand &rng)
 {
     counts = squid_event_counts{};
