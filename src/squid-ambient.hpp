@@ -35,7 +35,7 @@ constexpr int64_t SQUID_AMBIENT_SAMPLE_BYTES = 2;
 
 // One chunk is one second of the track. The voice reads a chunk past the mark only after the disc has refilled it, and the
 // refill must beat a game frame plus about 60 ms (rv_ca.h): a second is far more. Two chunks take 176400 bytes of the
-// 512 KiB sound memory, beside the nine effect wavs, 200556 bytes on disk (du -cb assets/snd/*.wav).
+// 512 KiB sound memory, beside the 15 effect sounds, 356918 bytes of baked PCM (their wav data chunks).
 constexpr int64_t SQUID_AMBIENT_CHUNK_BYTES = SQUID_AMBIENT_RATE * SQUID_AMBIENT_SAMPLE_BYTES;
 
 // Its own voice: the effects keep voice 1.

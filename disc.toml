@@ -23,6 +23,11 @@ format = "idx8"
 [models]
 files = ["assets/models/*.gltf"]
 
+[budget.pcca]
+# Over the default 512 KiB: 15 effect sounds (356918 bytes of baked PCM) and the ambient's two 1-second slots (176400 bytes).
+# Solid Maid and example-cpp declare the same 1 MiB. voice_count stays at its default 24; squid plays on voices 1 and 2.
+sound_memory_size = 1048576
+
 [budget.pccg]
 # Recognizable old-tech models at 160/80/40/20 triangles; the worst frame is about 2190 (balls 1600 + structure 430 +
 # Alkoldun 160), so 4096 leaves headroom over the 2048 default.

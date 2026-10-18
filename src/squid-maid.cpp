@@ -78,14 +78,20 @@ const squid_button_row *button_row(uint64_t pressed, squid_phase phase)
     return it == SQUID_BUTTON_ROWS.end() ? nullptr : &*it;
 }
 
-// Events of one frame that may carry a sound: a calibrate-type press, a frame with a split and a frame with a bounce.
+// Events of one frame that may carry a sound: a calibrate-type press, the goal's bell, a marked drink, a fridge split, a
+// split, a glass hit and a bounce.
 enum class squid_frame_event : int {
     calibrate = 0,
-    split = 1,
-    bounce = 2,
+    bell = 1,
+    cheers = 2,
+    can_glass = 3,
+    split = 4,
+    glass_hit = 5,
+    bounce = 6,
+    count,
 };
 // Count of the enum above; the flags are indexed by it.
-constexpr std::size_t SQUID_FRAME_EVENT_COUNT = 3;
+constexpr std::size_t SQUID_FRAME_EVENT_COUNT = static_cast<std::size_t>(squid_frame_event::count);
 using squid_frame_flags = std::array<bool, SQUID_FRAME_EVENT_COUNT>;
 
 struct squid_sound_rule {
@@ -97,13 +103,15 @@ struct squid_sound_rule {
 // the others anyway.
 constexpr auto SQUID_SOUND_RULES = std::to_array<squid_sound_rule>({
     { squid_frame_event::calibrate, squid_sound_event::calibrate },
+    { squid_frame_event::bell, squid_sound_event::bell },
+    { squid_frame_event::cheers, squid_sound_event::cheers },
+    { squid_frame_event::can_glass, squid_sound_event::can_glass },
     { squid_frame_event::split, squid_sound_event::split },
+    { squid_frame_event::glass_hit, squid_sound_event::glass_hit },
     { squid_frame_event::bounce, squid_sound_event::bounce },
 });
 
-// The flags, the events and the rules must agree: one flag per event, and every event has a rule.
-static_assert(static_cast<std::size_t>(squid_frame_event::bounce) + 1 == SQUID_FRAME_EVENT_COUNT,
-    "SQUID_FRAME_EVENT_COUNT must equal the number of squid_frame_event values");
+// The flags and the rules must agree: every frame event has a rule.
 constexpr bool squid_sound_rules_cover_events()
 {
     for (std::size_t event = 0; event < SQUID_FRAME_EVENT_COUNT; ++event) {
@@ -197,12 +205,14 @@ public:
         note(step_code);
         // Only a frame that stepped the physics moves the bodies.
         const bool stepped = step_code == RV_OK && phase_before_step == squid_phase::play && game_.phase == squid_phase::play;
+        // The goal's frame: the third marked drink moves the phase from play into descent, and its bell plays.
+        const bool descended = phase_before_step == squid_phase::play && game_.phase == squid_phase::descent;
         // A frame the input refused may carry a non-finite stick or quaternion: the panel keeps the last target then.
         const squid_tilt target = target_tilt(state);
         if (std::isfinite(target.x_deg) && std::isfinite(target.z_deg)) {
             target_tilt_ = target;
         }
-        note(sound_changes(stepped, happened));
+        note(sound_changes(stepped, descended, happened));
         // The loader logs a failed init; without the track there is nothing to refill.
         if (ambient_ready_) {
             note(squid_ambient_step(pdk_, ambient_));
@@ -292,13 +302,23 @@ private:
         return code;
     }
 
-    // Round events of a stepped frame: a split or a bounce. A split is a count of splits, however many it holds, and a
-    // bounce a count of bounces. A step refused for its dt keeps last frame's counts, so only a stepped frame can carry
-    // either. The frame plays one sound: the first rule of SQUID_SOUND_RULES that happened.
-    int sound_changes(bool stepped, squid_frame_flags &happened)
+    // Events of the frame: the bell from the phase, the rest from the physics counts of a stepped frame. A split is a count
+    // of splits, however many it holds, and a bounce a count of bounces. A step refused for its dt keeps last frame's counts,
+    // so only a stepped frame can carry them. A fridge split with no bottle (at the 16-bottle cap) is a plain split. An
+    // unmarked drink is a glass touch too. The frame plays one sound: the first rule of SQUID_SOUND_RULES that happened.
+    int sound_changes(bool stepped, bool descended, squid_frame_flags &happened)
     {
-        happened[static_cast<std::size_t>(squid_frame_event::split)] = stepped && game_.events.splits > 0;
-        happened[static_cast<std::size_t>(squid_frame_event::bounce)] = stepped && game_.events.bounces > 0;
+        const squid_event_counts &events = game_.events;
+        const auto mark = [&happened](squid_frame_event event, bool on) {
+            happened[static_cast<std::size_t>(event)] = on;
+        };
+        mark(squid_frame_event::bell, descended);
+        mark(squid_frame_event::cheers, stepped && events.marked_drunk > 0);
+        mark(squid_frame_event::can_glass, stepped && events.bottles_born > 0);
+        mark(squid_frame_event::split, stepped && events.splits > 0);
+        const bool unmarked_drunk = events.bottles_drunk > events.marked_drunk;
+        mark(squid_frame_event::glass_hit, stepped && (events.bottle_bounces > 0 || unmarked_drunk));
+        mark(squid_frame_event::bounce, stepped && events.bounces > 0);
         return play(happened);
     }
 
