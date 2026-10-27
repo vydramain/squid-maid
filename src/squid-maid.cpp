@@ -153,8 +153,6 @@ public:
         if (game_code != RV_OK) {
             return game_code;
         }
-        // The loader logs the cause; without sounds each event is refused and logged by its play.
-        note(squid_sound_init(pdk_, sound_));
         // The loader logs the cause; without the track the game runs with no ambient.
         const int ambient_code = squid_ambient_init(pdk_, ambient_);
         note(ambient_code);
