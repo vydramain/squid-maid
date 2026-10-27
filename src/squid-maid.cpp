@@ -6,15 +6,12 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "pdk/cg/rv_cg.h"
 #include "pdk/cio/rv_cio.h"
 #include "pdk/cio/rv_isource.h"
 #include "pdk/cv/rv_cv.h"
 #include "pdk/rv_err.h"
 #include "pdk/rv_pdko.h"
-#include "pdklib/rv_cppdisc/rv_cppdisc.hpp"
-#include "pdklib/rv_ecs/rv_ecs.hpp"
-#include "pdklib/rv_ecs/rv_ecs_frame.hpp"
+#include "pdkkit/disc/rv_pdkkit_disc.hpp"
 #include "pdklib/rv_font/rv_font.hpp"
 #include "pdklib/rv_logs/rv_logs.hpp"
 #include "squid-ambient.hpp"
@@ -137,20 +134,18 @@ const squid_sound_rule *sound_rule(const squid_frame_flags &happened)
 
 } // namespace
 
-// rv_cppdisc.hpp supplies the startup guards, MENU-button tracking and the frame plumbing.
-RV_MPPC_DISC_CPP_DEF(squid_maid_base_)
-
-class squid_maid : public squid_maid_base_
+// The base supplies the world, the built-in components, the frame clock and the input.
+class squid_maid : public rv_pdkkit::pdkkit_disc
 {
 public:
     int64_t disc_initialize(rv_pdko *pdk)
     {
-        const int64_t base_result = squid_maid_base_::disc_initialize(pdk);
-        if (base_result < 0) {
+        const int64_t base_result = rv_pdkkit::pdkkit_disc::disc_initialize(pdk);
+        if (base_result != RV_OK) {
             return base_result;
         }
         if (rv_pdko_cg(pdk_) == nullptr) {
-            RV_LOG_ERR(SQUID_MAID_TAG, "no geometry controller: the camera cannot be set");
+            RV_LOG_ERR(SQUID_MAID_TAG, "no geometry controller: the scene cannot be drawn");
             return RV_ERR_INVAL;
         }
         // The machine logs the cause; without the start layout there is no round to play.
@@ -183,7 +178,7 @@ public:
 
     void frame_update(float dt)
     {
-        squid_maid_base_::frame_update(dt);
+        rv_pdkkit::pdkkit_disc::frame_update(dt);
         rv_cio *cio = rv_pdko_cio(pdk_);
         const rv_istate state = rv_cio_iport_state(cio, 0);
         const uint64_t abilities = rv_cio_iport_abilities(cio, 0);
@@ -408,28 +403,21 @@ private:
         return RV_OK;
     }
 
-    // The scene's models, in the ECS frame; the debug view is drawn over them.
+    // The scene's models, drawn by the kit's frame, which also sets the scene's camera; the debug view is drawn over them.
     void draw_scene()
     {
         if (!scene_ready_) {
             return;
         }
-        const int code = rv_pdklib::ecs_world_frame(world_, rv_pdklib::ecs_frame{ pdk_, frame_index_ });
+        const int code = world_frame();
         draw_step("scene", code);
     }
 
+    // The HUD needs no camera: the scene's camera is an object of the scene, set by the kit's frame.
     void draw_view()
     {
-        rv_cg *cg = rv_pdko_cg(pdk_);
-        rv_cv *cv = rv_pdko_cv(pdk_);
-        rv_cg_camera camera{};
-        squid_scene_camera_make(camera);
-        const int camera_code = static_cast<int>(rv_cg_frame_camera(cg, &camera));
-        draw_step("camera", camera_code);
-        if (camera_code != RV_OK) {
-            return;
-        }
         if (font_ready_) {
+            rv_cv *cv = rv_pdko_cv(pdk_);
             draw_step("hud", squid_hud_draw(cv, font_style(), hud_round(), hud_debug(), debug_panel_));
         }
     }
@@ -471,7 +459,6 @@ private:
     squid_tilt target_tilt_{};
     // Upper left rear button (L4) toggles the debug panel; off at start.
     bool debug_panel_ = false;
-    rv_pdklib::ecs_world world_;
     squid_scene_objects scene_;
     bool scene_ready_ = false;
     // One scene entity per body slot; bodies_ready_ when every slot is loaded.
