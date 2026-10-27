@@ -201,3 +201,25 @@ name = "lens"
 fov = 30
 near_plane = 8
 far_plane = 40
+
+# Working state of the round: the game's systems read it, and the editor shows the object. It holds no scene data.
+[[object]]
+id = "7a500050"
+parent = ""
+
+[[component]]
+object = "7a500050"
+name = "name"
+text = "round"
+
+[[component]]
+object = "7a500050"
+name = "squid_round"
+
+[[component]]
+object = "7a500050"
+name = "squid_view"
+
+[[component]]
+object = "7a500050"
+name = "squid_effects"
