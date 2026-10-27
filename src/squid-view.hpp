@@ -17,7 +17,7 @@
 #include "squid-state.hpp"
 #include "pdk/cd/rv_cd.h"
 #include "pdk/rv_err.h"
-#include "pdklib/rv_ecs/rv_ecs.hpp"
+#include "pdkkit/ecs/rv_ecs.hpp"
 #include "pdklib/rv_logs/rv_logs.hpp"
 
 namespace squid
@@ -135,7 +135,7 @@ inline int squid_view_model(const squid_body &body, const char *&model)
 
 // Writes the body's model, position (its dome centre, lifted by its hover) and rotation to its entity. A refusal keeps
 // the entity's previous pose and model; its cause is logged where it is found.
-inline int squid_view_body_set(rv_pdklib::ecs_world &world, rv_pdklib::ecs_id id, const squid_body &body)
+inline int squid_view_body_set(rv_pdkkit::ecs_world &world, rv_pdkkit::ecs_id id, const squid_body &body)
 {
     float radius = 0.0f;
     if (squid_body_radius(body, radius) != RV_OK) {
@@ -162,7 +162,7 @@ inline int squid_view_body_set(rv_pdklib::ecs_world &world, rv_pdklib::ecs_id id
 
 // A pool entity and the load that made it; the load is what unloads it.
 struct squid_view_slot {
-    rv_pdklib::ecs_id id{};
+    rv_pdkkit::ecs_id id{};
     uint32_t load = 0;
 };
 
@@ -173,7 +173,7 @@ struct squid_view_pool {
 };
 
 // Unloads the loaded slots and forgets them; an unload that fails is logged by the unload.
-inline void squid_view_pool_unload(rv_pdklib::ecs_world &world, squid_view_pool &pool)
+inline void squid_view_pool_unload(rv_pdkkit::ecs_world &world, squid_view_pool &pool)
 {
     for (int i = 0; i < pool.spawned; ++i) {
         (void)squid_scene_body_unload(world, pool.slots[i].load);
@@ -183,7 +183,7 @@ inline void squid_view_pool_unload(rv_pdklib::ecs_world &world, squid_view_pool 
 
 // Loads one body entity per slot under pose_yaw. A refused load unloads the slots already made, so no body is
 // shown, and returns the refusal.
-inline int squid_view_spawn(rv_pdklib::ecs_world &world, rv_cd *cd, const squid_scene_objects &objects, squid_view_pool &pool)
+inline int squid_view_spawn(rv_pdkkit::ecs_world &world, rv_cd *cd, const squid_scene_objects &objects, squid_view_pool &pool)
 {
     for (int i = 0; i < SQUID_BODY_CAPACITY; ++i) {
         squid_view_slot &slot = pool.slots[i];
@@ -203,7 +203,7 @@ inline int squid_view_spawn(rv_pdklib::ecs_world &world, rv_cd *cd, const squid_
 }
 
 // Writes Alkoldun's pose on the flight: the arc point at the descent's progress, upright so his feet point at the plate.
-inline int squid_view_flight_set(rv_pdklib::ecs_world &world, rv_pdklib::ecs_id id, const char *model, const squid_descent &d)
+inline int squid_view_flight_set(rv_pdkkit::ecs_world &world, rv_pdkkit::ecs_id id, const char *model, const squid_descent &d)
 {
     const rv_pdklib::rv_vec3 point = squid_descent_point(d, squid_descent_end());
     rv_pdklib::fx_vec3 position{};
@@ -216,8 +216,8 @@ inline int squid_view_flight_set(rv_pdklib::ecs_world &world, rv_pdklib::ecs_id 
 }
 
 // Alkoldun in a flight phase is drawn on the arc; every other body keeps its physics pose.
-inline int squid_view_pose(rv_pdklib::ecs_world &world,
-    rv_pdklib::ecs_id id,
+inline int squid_view_pose(rv_pdkkit::ecs_world &world,
+    rv_pdkkit::ecs_id id,
     const squid_body &body,
     squid_phase phase,
     const squid_descent &d)
@@ -231,7 +231,7 @@ inline int squid_view_pose(rv_pdklib::ecs_world &world,
 
 // Shows slot i as body i with its pose and hides the slots past the count. Every slot is visited; the first refusal
 // is returned. The phase and descent place Alkoldun on his flight.
-inline int squid_view_update(rv_pdklib::ecs_world &world,
+inline int squid_view_update(rv_pdkkit::ecs_world &world,
     const squid_view_pool &pool,
     const squid_bodies &bodies,
     squid_phase phase,
