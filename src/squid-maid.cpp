@@ -1,5 +1,5 @@
 // squid-maid entry point: registers the squid components and systems, loads the scene and draws the frame. The round's
-// logic runs in the systems (squid-systems-play.hpp, squid-systems-report.hpp).
+// logic runs in the systems (squid-systems-play.hpp, squid-systems-report.hpp, squid-music.hpp).
 #include <cstdint>
 
 #include "pdk/cio/rv_cio.h"
@@ -10,10 +10,10 @@
 #include "pdkkit/disc/rv_pdkkit_disc.hpp"
 #include "pdklib/rv_font/rv_font.hpp"
 #include "pdklib/rv_logs/rv_logs.hpp"
-#include "squid-ambient.hpp"
 #include "squid-components.hpp"
 #include "squid-draw.hpp"
 #include "squid-hud.hpp"
+#include "squid-music.hpp"
 #include "squid-scene.hpp"
 #include "squid-state.hpp"
 #include "squid-systems-play.hpp"
@@ -50,10 +50,10 @@ public:
         if (report_code != RV_OK) {
             return report_code;
         }
-        // The loader logs the cause; without the track the game runs with no ambient.
-        const int ambient_code = squid_ambient_init(pdk_, ambient_);
-        note(ambient_code);
-        ambient_ready_ = ambient_code == RV_OK;
+        const int music_code = squid_music_register(world_);
+        if (music_code != RV_OK) {
+            return music_code;
+        }
         // The loader logs the cause; without the scene there is no round and the disc draws the stars only.
         squid_scene_objects objects{};
         scene_ready_ = squid_scene_load(world_, rv_pdko_cd(pdk_), objects) == RV_OK;
@@ -73,10 +73,6 @@ public:
     void frame_update(float dt)
     {
         rv_pdkkit::pdkkit_disc::frame_update(dt);
-        // The loader logs a failed init; without the track there is nothing to refill.
-        if (ambient_ready_) {
-            note(squid_ambient_step(pdk_, ambient_));
-        }
         // The systems read dt from the round; a missing round is logged by the systems that need it.
         squid_round *round = nullptr;
         if (scene_ready_ && squid_single(world_, round) == RV_OK) {
@@ -211,9 +207,6 @@ private:
             SQUID_DRAW_FONT_BLOCKS);
     }
 
-    // The ambient track's stream; ambient_ready_ once its init succeeded.
-    squid_ambient ambient_;
-    bool ambient_ready_ = false;
     // scene_ready_ once the scene is loaded and its round starts the game.
     bool scene_ready_ = false;
     int64_t addr_font_ = 0;
