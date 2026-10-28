@@ -2,8 +2,8 @@
 
 // The first four systems of the squid frame, in run order: input, round, tilt, bodies. They reach the round and the view
 // through their components; the disc supplies the frame's input and the round's dt before they run. A step's refusal is
-// counted in the round and the system returns RV_OK: the kit ends the frame at the first returned code. Only a missing
-// holder's code is returned.
+// counted in the round and the system returns RV_OK: the kit ends the frame at the first returned code. Only a
+// holder's code is returned: none or two.
 
 #include <algorithm>
 #include <array>
@@ -158,7 +158,8 @@ inline int squid_system_round(rv_pdkkit::ecs_world &world, const rv_pdkkit::ecs_
     return RV_OK;
 }
 
-// The round and the view, both needed by the tilt and bodies systems; the first missing holder's code is returned.
+// The round and the view, both needed by the tilt and bodies systems; the first refused holder's code (none or two) is
+// returned.
 inline int squid_round_view_of(rv_pdkkit::ecs_world &world, squid_round *&round, squid_view *&view)
 {
     const int round_code = squid_single(world, round);
