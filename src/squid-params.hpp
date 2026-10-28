@@ -38,8 +38,8 @@ constexpr float SQUID_DOME_CENTER_X = -0.012f;
 constexpr float SQUID_DOME_CENTER_Y = -0.974f;
 constexpr float SQUID_DOME_CENTER_Z = -0.059f;
 
-// Scale of the structure's pose group (pose_scale, 5120 in Q20.12 in scenes/main.scene.toml): it turns the Earth plate,
-// the elephants and the turtle 1.25 about the dome centre, and the dome radius is sized for it.
+// Scale of the structure's pose group (pose_scale, 1.25 in scenes/main.scene.toml): it scales the Earth plate,
+// the elephants and the turtle by 1.25 about the dome centre, and the dome radius is sized for it.
 constexpr float SQUID_STRUCTURE_SCALE = 1.25f;
 
 // Disc edge as the angle from the dome top; at 90 deg (equator) edge balls are squeezed 36 percent along the circle,
@@ -169,30 +169,14 @@ constexpr float SQUID_SPLIT_SEPARATION_SPEED = 0.6f;
 // Share of the game tilt that the world on screen tilts by: up to about 11.7 deg (35 / 3).
 constexpr float SQUID_VISIBLE_TILT_SHARE = 1.0f / 3.0f;
 
-// Scene camera elevation above the disc plane, in degrees. Rendered at 15, 20, 25 and 30: 15 leaves the level plate
-// nearly edge-on, 30 hides most of the structure under it; 25 shows the plate from above with the structure and turtle
-// under it, and with D-pad E held the dome cap stays in the frame. The azimuth below turns it to the upper right.
-constexpr float SQUID_CAMERA_ELEVATION_DEG = 25.0f;
-
 // Scene camera azimuth in degrees: the eye's turn about the vertical axis through the look-at point; positive moves
-// the eye toward +x, the viewer's right, so the camera looks from the upper right.
+// the eye toward +x, the viewer's right, so the camera looks from the upper right. The camera object of
+// scenes/main.scene.toml looks from this azimuth (its yaw is this minus 180, -150), and squid-input.hpp turns the
+// D-pad by it, so the two change together.
 constexpr float SQUID_CAMERA_AZIMUTH_DEG = 30.0f;
 
-// Yaw of the pose_yaw group in degrees (-122880 in Q20.12 in scenes/main.scene.toml): the balls and the structure turn
+// Yaw of the pose_yaw group in degrees (-30 in scenes/main.scene.toml): the balls and the structure turn
 // about the plate normal under the tilt root; squid_gravity_disc turns the gravity into those axes to match.
 constexpr float SQUID_POSE_YAW_DEG = -30.0f;
-
-// Vertical field of view in degrees; the distance below is computed for it.
-constexpr float SQUID_CAMERA_FOV_DEG = 30.0f;
-
-// Eye distance from the look-at point. Checked on frames 8 and 128 at pitch 30: no ball leaves the 320x240 frame.
-constexpr float SQUID_CAMERA_DISTANCE = 20.5f;
-
-// Height of the look-at point above the origin, in world units; raised so the Earth sits low in the frame.
-constexpr float SQUID_CAMERA_TARGET_Y = 0.6f;
-
-// Clip planes. The dome sphere with size-4 balls lies about 16 to 26 from the eye; near 8 and far 40 cut none of it.
-constexpr float SQUID_CAMERA_NEAR = 8.0f;
-constexpr float SQUID_CAMERA_FAR = 40.0f;
 
 } // namespace squid

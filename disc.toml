@@ -4,30 +4,27 @@ title = "squid-maid"
 
 [build]
 sources = ["src/*.cpp"]
+# Without the SDK kit, #include "pdkkit/..." is not found.
+sdk = ["kit"]
 
 [assets]
-files = ["scenes/*.scene.toml"]
+# Sorted by extension: scenes are copied as they are, the effect .wav files are baked to .pcm and stay in sound memory,
+# the .gltf models are baked to .mppcmod.
+files = ["scenes/*.scene.toml", "assets/snd/sfx_*.wav", "assets/models/*.gltf"]
 
-[sounds]
-# Effects only: they stay resident in sound memory. The music is in [music], not here.
-files = ["assets/snd/sfx_*.wav"]
-
-[music]
-# The six looping sections, 24-bit WAV, baked at burn to headerless S16LE mono 44100 Hz "<stem>.pcm" drive assets, read
-# whole by the game (not in sound memory). The game plays them in its playlist order (src/squid-ambient.hpp).
-files = ["assets/snd/mus_*.wav"]
-
-[textures]
-# No separate textures yet; format is still required by [models].
-files = []
+[assets.texture]
+# Format the PNG textures named in the .gltf files are baked to; there are no separate textures yet.
 format = "idx8"
 
-[models]
-files = ["assets/models/*.gltf"]
+[assets.stream]
+# The six looping music sections, 24-bit WAV, are baked at burn to headerless S16LE mono 44100 Hz .pcm files that the
+# drive streams; they are not loaded into sound memory.
+files = ["assets/snd/mus_*.wav"]
 
 [budget.pcca]
-# Over the default 512 KiB: 15 effect sounds (356918 bytes of baked PCM) and the ambient's two 1-second slots (176400 bytes).
-# Solid Maid and example-cpp declare the same 1 MiB. voice_count stays at its default 24; squid plays on voices 1 and 2.
+# 1 MiB, as Solid Maid and example-cpp declare: the 15 effect sounds take 356918 bytes of baked PCM;
+# the music streams from the drive and takes no sound memory.
+# voice_count stays at its default 24.
 sound_memory_size = 1048576
 
 [budget.pccg]

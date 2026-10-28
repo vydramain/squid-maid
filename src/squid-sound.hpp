@@ -12,9 +12,9 @@
 #include "pdk/ca/rv_ca.h"
 #include "pdk/ca/rv_loop.h"
 #include "pdk/ca/rv_voice_conf.h"
-#include "pdk/cd/rv_cd.h"
 #include "pdk/rv_err.h"
 #include "pdk/rv_pdko.h"
+#include "pdkkit/sound/rv_pdkkit_sound.hpp"
 #include "pdklib/rv_logs/rv_logs.hpp"
 
 namespace squid
@@ -106,20 +106,11 @@ constexpr bool squid_sound_rows_in_order()
 }
 static_assert(squid_sound_rows_in_order(), "SQUID_SOUND_ROWS must hold each event in enum order, with an asset");
 
-// The variants of an event, and the flat index of its first asset: the assets are numbered row by row.
+// The number of variants of an event.
 constexpr int squid_sound_variants(int event)
 {
     return static_cast<int>(SQUID_SOUND_ROWS[static_cast<std::size_t>(event)].assets.size());
 }
-constexpr int squid_sound_first_asset(int event)
-{
-    int first = 0;
-    for (int i = 0; i < event; ++i) {
-        first += squid_sound_variants(i);
-    }
-    return first;
-}
-constexpr int SQUID_SOUND_ASSET_COUNT = squid_sound_first_asset(SQUID_SOUND_COUNT);
 
 // The one voice: bit 0 of the voice mask. Every event is played on it. A cutting event cuts the sound playing; a bounce or a
 // glass hit is dropped while it plays.
@@ -131,38 +122,11 @@ constexpr int16_t SQUID_SOUND_MAX_LEVEL = 32767;
 // No envelope: the sample's own shape carries the event, the voice holds full level until the sample ends.
 constexpr int16_t SQUID_SOUND_ENVELOPE = 0;
 
-// Sound RAM address of each asset; set by squid_sound_init. rv_cd.h: an address is valid until its resource is reloaded,
-// so the table is only good while the disc keeps its audio loaded. turn is each event's next variant: a split's place in
-// SQUID_SPLIT_ORDER, a glass hit's index, 0 for an event with one variant.
+// turn is each event's next variant: a split's place in SQUID_SPLIT_ORDER, a glass hit's index, 0 for an event with one
+// variant.
 struct squid_sound {
-    int64_t addr[SQUID_SOUND_ASSET_COUNT] = {};
-    bool loaded = false;
     int turn[SQUID_SOUND_COUNT] = {};
 };
-
-// Resolves the assets on the disc. Returns RV_OK, or the failing lookup's code with its asset named in the log.
-inline int squid_sound_init(rv_pdko *pdk, squid_sound &sound)
-{
-    sound.loaded = false;
-    if (pdk == nullptr) {
-        RV_LOG_ERR(squid_sound_tag, "init refused: pdk is null");
-        return RV_ERR_INVAL;
-    }
-    int asset = 0;
-    for (const squid_sound_row &row : SQUID_SOUND_ROWS) {
-        for (const char *name : row.assets) {
-            const int64_t addr = rv_cd_resource_addr(rv_pdko_cd(pdk), RV_CD_RESOURCE_AUDIO, name);
-            if (addr < 0) {
-                RV_LOG_ERR(squid_sound_tag, "asset {} is not on the disc: code {}", name, addr);
-                return static_cast<int>(addr);
-            }
-            sound.addr[asset] = addr;
-            ++asset;
-        }
-    }
-    sound.loaded = true;
-    return RV_OK;
-}
 
 // The variant the event plays now: a split takes its turn in SQUID_SPLIT_ORDER, the other events their turn.
 inline int squid_sound_variant(const squid_sound &sound, squid_sound_event event)
@@ -178,17 +142,14 @@ inline int squid_sound_voice_busy(rv_pdko *pdk)
 }
 
 // Plays the event's sound once on the voice, unless a non-cutting event finds the voice busy: then nothing starts. started
-// tells whether a sound started. Returns RV_OK, or the failing call's code with the cause in the log.
+// tells whether a sound started. Returns RV_OK, or the failing call's code: a refused sample is logged by the drive,
+// or, with no drive, by the kit; a failed voice call here.
 inline int squid_sound_play(rv_pdko *pdk, squid_sound &sound, squid_sound_event event, bool &started)
 {
     started = false;
     const int index = static_cast<int>(event);
     if (pdk == nullptr) {
         RV_LOG_ERR(squid_sound_tag, "play refused: pdk is null");
-        return RV_ERR_INVAL;
-    }
-    if (!sound.loaded) {
-        RV_LOG_ERR(squid_sound_tag, "play refused: the sounds are not loaded; squid_sound_init must run first");
         return RV_ERR_INVAL;
     }
     if (index < 0 || index >= SQUID_SOUND_COUNT) {
@@ -205,12 +166,17 @@ inline int squid_sound_play(rv_pdko *pdk, squid_sound &sound, squid_sound_event 
         return RV_OK;
     }
     const int variant = squid_sound_variant(sound, event);
-    const int asset = squid_sound_first_asset(index) + variant;
     const char *name = row.assets[static_cast<std::size_t>(variant)];
+    // The drive logs a refused name once, so the refusal is returned without a log here.
+    int64_t addr = 0;
+    const int resident_code = rv_pdkkit::sound_asset_resident(rv_pdko_cd(pdk), name, addr);
+    if (resident_code != RV_OK) {
+        return resident_code;
+    }
     rv_voice_conf conf = {};
     conf.voice = SQUID_SOUND_VOICE;
     conf.loop_type = RV_LOOP_NONE;
-    conf.sample_address = sound.addr[asset];
+    conf.sample_address = addr;
     conf.ar = SQUID_SOUND_ENVELOPE;
     conf.dr = SQUID_SOUND_ENVELOPE;
     conf.sr = SQUID_SOUND_ENVELOPE;
@@ -219,15 +185,15 @@ inline int squid_sound_play(rv_pdko *pdk, squid_sound &sound, squid_sound_event 
     conf.volume = SQUID_SOUND_MAX_LEVEL;
     conf.volume_l = SQUID_SOUND_MAX_LEVEL;
     conf.volume_r = SQUID_SOUND_MAX_LEVEL;
-    const int64_t setup_code = rv_ca_voice_setup(rv_pdko_ca(pdk), &conf);
-    if (setup_code < 0) {
-        RV_LOG_ERR(squid_sound_tag, "voice setup for {} failed: code {}", name, setup_code);
-        return static_cast<int>(setup_code);
+    const int setup_code = rv_pdkkit::sound_voice_setup(rv_pdko_ca(pdk), conf);
+    if (setup_code != RV_OK) {
+        RV_LOG_ERR(squid_sound_tag, "voice setup for {} failed: rv_err {}", name, setup_code);
+        return setup_code;
     }
-    const int64_t play_code = rv_ca_voice_play(rv_pdko_ca(pdk), SQUID_SOUND_VOICE);
-    if (play_code < 0) {
-        RV_LOG_ERR(squid_sound_tag, "voice play for {} failed: code {}", name, play_code);
-        return static_cast<int>(play_code);
+    const int play_code = rv_pdkkit::sound_voice_play(rv_pdko_ca(pdk), SQUID_SOUND_VOICE);
+    if (play_code != RV_OK) {
+        RV_LOG_ERR(squid_sound_tag, "voice play for {} failed: rv_err {}", name, play_code);
+        return play_code;
     }
     // The turn moves on only once its variant has started, so a failed play does not skip one.
     sound.turn[index] = (sound.turn[index] + 1) % squid_sound_variants(index);
