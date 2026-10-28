@@ -18,6 +18,7 @@
 #include "squid-scene.hpp"
 #include "squid-sound.hpp"
 #include "squid-state.hpp"
+#include "squid-texts.hpp"
 #include "squid-view.hpp"
 
 namespace squid
@@ -47,6 +48,8 @@ struct squid_round {
     bool sensor = false;
     // L4 toggles it; closed at start.
     bool debug_panel = false;
+    // Set by the language pick: (A) Russian, (B) English.
+    squid_lang lang = squid_lang::ru;
     // Input tilt target, shown by the panel.
     squid_tilt target_tilt{};
     // Phase before this frame's press.

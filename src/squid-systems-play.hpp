@@ -44,12 +44,13 @@ struct squid_button {
     squid_command command;
 };
 
-// Port 0 buttons by phase, named by the pad's labels: A (SOUTH) is the one "next" button, start from prepare and from
-// ready, and takes no pose; Y (NORTH) sets the pose the pad is held in as level; View (MENU_BTTN_VIEW) pauses and resumes;
-// B (EAST) restarts. L5 (lower left rear) splits the balls in play and pause; the input system passes it only while the
-// debug panel is open.
+// Port 0 buttons by phase, named by the pad's labels: in the language pick A (SOUTH) is Russian and B (EAST) English;
+// A starts from ready and takes no pose; Y (NORTH) sets the pose the pad is held in as level; View (MENU_BTTN_VIEW) pauses and
+// resumes; B (EAST) restarts. L5 (lower left rear) splits the balls in play and pause; the input system passes it only while
+// the debug panel is open.
 inline constexpr auto SQUID_BUTTONS = std::to_array<squid_button>({
-    { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::prepare, squid_command::start },
+    { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::language, squid_command::pick },
+    { RV_ISOURCE_FRONT_BTTN_EAST, squid_phase::language, squid_command::pick },
     { RV_ISOURCE_FRONT_BTTN_SOUTH, squid_phase::ready, squid_command::start },
     { RV_ISOURCE_FRONT_BTTN_NORTH, squid_phase::ready, squid_command::calibrate },
     { RV_ISOURCE_FRONT_BTTN_NORTH, squid_phase::pause, squid_command::calibrate },
@@ -86,6 +87,9 @@ inline int squid_input_press(squid_round &round, uint64_t pressed, const rv_ista
     const squid_button *row = squid_button_row_of(pressed, round.game.phase);
     if (row == nullptr) {
         return RV_OK;
+    }
+    if (row->command == squid_command::pick) {
+        round.lang = row->button == RV_ISOURCE_FRONT_BTTN_EAST ? squid_lang::en : squid_lang::ru;
     }
     const bool calibrating = row->command == squid_command::calibrate;
     const bool gyroless = calibrating && !round.sensor;

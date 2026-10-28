@@ -146,10 +146,10 @@ private:
         }
     }
 
-    // The HUD's view of the round: the phase and the beer counter.
+    // The HUD's view of the round: the phase, the beer counter and the language.
     static squid_hud_round hud_round(const squid_round &round)
     {
-        return squid_hud_round{ round.game.phase, round.game.beer_drunk };
+        return squid_hud_round{ round.game.phase, round.game.beer_drunk, round.lang };
     }
 
     static squid_hud_debug hud_debug(const squid_round &round)
