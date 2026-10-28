@@ -26,12 +26,11 @@ namespace squid
 // The text and its backdrop sit in the overlay, the top key: nearer than the scene and the decals (rv_primitives.h).
 constexpr int32_t SQUID_HUD_DEPTH = RV_DEPTH_MAX;
 
-// Layout from the top-left corner, in pixels. A line is one font line plus the gap below it.
-constexpr int SQUID_HUD_X = 4;
-constexpr int SQUID_HUD_Y = 4;
+// Layout from the centre of the bottom edge, in pixels: each line is centred, the last one sits on the bottom margin.
+// A line is one font line plus the gap below it.
 constexpr int SQUID_HUD_LINE_GAP_PX = 2;
 // Text stops this far short of each screen edge; a line wider than that wraps at spaces. The backdrop pads the text by
-// this much on the right and below.
+// this much on each side.
 constexpr int SQUID_HUD_MARGIN_PX = 4;
 // Blank lines between the hint and the debug panel.
 constexpr int SQUID_HUD_PANEL_GAP_LINES = 1;
@@ -234,32 +233,34 @@ inline squid_hud_lines squid_hud_layout(rv_pdklib::rv_font_style style,
     return lines;
 }
 
-// One flat sprite from the top-left corner: as wide as the widest line plus the left inset and the margin, as high as the
-// lines plus the top inset and the margin. Refused puts return their code.
-inline int squid_hud_backdrop_put(rv_cv *cv, rv_pdklib::rv_font_style style, const squid_hud_lines &lines)
+// One flat sprite centred on the bottom edge: as wide as the widest line plus the margin on each side, from the margin
+// above the first line at top down to the bottom edge. Refused puts return their code.
+inline int
+squid_hud_backdrop_put(rv_cv *cv, rv_pdklib::rv_font_style style, const squid_hud_lines &lines, int screen_w, int screen_h, int top)
 {
     int widest = 0;
     for (const std::string &line : lines) {
         widest = std::max(widest, rv_pdklib::rv_font_measure_width(line, style.scale));
     }
-    const int width = SQUID_HUD_X + widest + SQUID_HUD_MARGIN_PX;
-    const int height = SQUID_HUD_Y + static_cast<int>(lines.size()) * squid_hud_line_step(style) + SQUID_HUD_MARGIN_PX;
+    const int width = widest + 2 * SQUID_HUD_MARGIN_PX;
+    const int y = std::max(0, top - SQUID_HUD_MARGIN_PX);
+    const int height = screen_h - y;
     rv_primitive primitive{};
     primitive.type = RV_PRIMITIVE_SPRITE;
     primitive.depth = SQUID_HUD_DEPTH;
     primitive.data.sprite.fill_mode = RV_PRIMITIVE_FILL_MODE_FLAT_COLOURED;
     primitive.data.sprite.mapping = RV_TEXWRAP_CLAMP;
     primitive.data.sprite.color = SQUID_HUD_BACKDROP_COLOUR;
-    primitive.data.sprite.x = 0;
-    primitive.data.sprite.y = 0;
+    primitive.data.sprite.x = static_cast<int16_t>((screen_w - width) / 2);
+    primitive.data.sprite.y = static_cast<int16_t>(y);
     primitive.data.sprite.width = static_cast<uint16_t>(width);
     primitive.data.sprite.height = static_cast<uint16_t>(height);
     return static_cast<int>(rv_cv_frame_put(cv, &primitive));
 }
 
-// Draws the HUD over the frame: a backdrop behind the hint, and the debug panel under it when show_debug is set. Every
-// part is drawn even when one is refused; the first refusal is returned. Without a screen width there is nothing to wrap
-// to: that refusal is returned before anything is drawn.
+// Draws the HUD over the frame at the centre of the bottom edge: a backdrop behind the hint, and the debug panel under it
+// when show_debug is set. Every part is drawn even when one is refused; the first refusal is returned. Without a screen
+// size there is nothing to lay out to: that refusal is returned before anything is drawn.
 inline int squid_hud_draw(rv_cv *cv,
     rv_pdklib::rv_font_style style,
     const squid_hud_round &round,
@@ -270,15 +271,21 @@ inline int squid_hud_draw(rv_cv *cv,
     if (width < 0) {
         return static_cast<int>(width);
     }
+    const int64_t height = rv_cv_screen_height(cv);
+    if (height < 0) {
+        return static_cast<int>(height);
+    }
     const int max_px = static_cast<int>(width) - 2 * SQUID_HUD_MARGIN_PX;
     const squid_hud_lines lines = squid_hud_layout(style, max_px, round, debug, show_debug);
 
     // Same depth key: primitives of one bucket draw in submission order, so the backdrop goes first and the text lands on it.
-    int first_code = squid_hud_backdrop_put(cv, style, lines);
-    int y = SQUID_HUD_Y;
+    const int step = squid_hud_line_step(style);
+    int y = static_cast<int>(height) - SQUID_HUD_MARGIN_PX - static_cast<int>(lines.size()) * step + SQUID_HUD_LINE_GAP_PX;
+    int first_code = squid_hud_backdrop_put(cv, style, lines, static_cast<int>(width), static_cast<int>(height), y);
     for (const std::string &line : lines) {
-        first_code = squid_hud_first(first_code, squid_hud_put(cv, style, SQUID_HUD_X, y, line));
-        y += squid_hud_line_step(style);
+        const int x = (static_cast<int>(width) - rv_pdklib::rv_font_measure_width(line, style.scale)) / 2;
+        first_code = squid_hud_first(first_code, squid_hud_put(cv, style, x, y, line));
+        y += step;
     }
     if (first_code != RV_OK) {
         return first_code;
