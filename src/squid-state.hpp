@@ -34,8 +34,9 @@ constexpr std::uint32_t SQUID_LAYOUT_SEED = 1018;
 // Draws per body before the layout is refused. A spot that is not found in this many tries is an error, not a retry.
 constexpr int SQUID_LAYOUT_ATTEMPTS = 10000;
 
+// language: the player picks the language; ready: the tilt calibration; then the round.
 enum class squid_phase {
-    prepare,
+    language,
     ready,
     play,
     pause,
@@ -44,6 +45,7 @@ enum class squid_phase {
     landed
 };
 enum class squid_command {
+    pick,
     calibrate,
     start,
     pause,
@@ -64,8 +66,9 @@ constexpr std::size_t SQUID_EVENT_COUNT = static_cast<std::size_t>(squid_event::
 
 // Names for the refusal log, indexed by the enum value.
 inline constexpr std::array<const char *, SQUID_PHASE_COUNT>
-    SQUID_PHASE_NAMES{ "prepare", "ready", "play", "pause", "descent", "descent_pause", "landed" };
-inline constexpr std::array<const char *, SQUID_COMMAND_COUNT> SQUID_COMMAND_NAMES{ "calibrate",
+    SQUID_PHASE_NAMES{ "language", "ready", "play", "pause", "descent", "descent_pause", "landed" };
+inline constexpr std::array<const char *, SQUID_COMMAND_COUNT> SQUID_COMMAND_NAMES{ "pick",
+    "calibrate",
     "start",
     "pause",
     "restart",
@@ -93,7 +96,7 @@ struct squid_edge {
 };
 
 inline constexpr auto SQUID_EDGES = std::to_array<squid_edge>({
-    { squid_phase::prepare, squid_command::start, squid_phase::ready },
+    { squid_phase::language, squid_command::pick, squid_phase::ready },
     { squid_phase::ready, squid_command::calibrate, squid_phase::ready },
     { squid_phase::pause, squid_command::calibrate, squid_phase::pause },
     { squid_phase::ready, squid_command::start, squid_phase::play },
@@ -129,7 +132,7 @@ static_assert(std::ranges::all_of(std::views::iota(0uz, SQUID_EVENT_COUNT), [](s
 }));
 
 struct squid_game {
-    squid_phase phase = squid_phase::prepare;
+    squid_phase phase = squid_phase::language;
     squid_input input{};
     // The body set stepped in play, and the splits and absorbs of the current frame; zero on frames that do not step
     // the physics (prepare, ready, pause, pad loss, a frame the physics refused); a step refused for its dt changes nothing.
@@ -248,7 +251,7 @@ inline void squid_motion_birth(squid_bodies &set, std::minstd_rand &rng)
     }
 }
 
-// Builds the start layout of a fresh game; the game starts in prepare.
+// Builds the start layout of a fresh game; the game starts with the language pick.
 inline int squid_game_init(squid_game &g)
 {
     const int layout = squid_layout_build(g.bodies);
@@ -257,7 +260,7 @@ inline int squid_game_init(squid_game &g)
     }
     g.drift_rng.seed(SQUID_LAYOUT_SEED);
     squid_motion_birth(g.bodies, g.drift_rng);
-    g.phase = squid_phase::prepare;
+    g.phase = squid_phase::language;
     return RV_OK;
 }
 
@@ -386,6 +389,7 @@ inline int squid_game_apply(squid_game &g, squid_command command, const rv_istat
         return squid_game_restart(g);
     case squid_command::split_all:
         return squid_game_split_all(g);
+    case squid_command::pick:
     case squid_command::start:
     case squid_command::pause:
         break;
@@ -466,7 +470,7 @@ inline int squid_game_descend(squid_game &g, uint64_t abilities, float dt)
     return squid_descent_advance(g.descent, dt) ? squid_game_fire(g, squid_event::landed) : RV_OK;
 }
 
-// One frame of dt seconds. Ready takes input only; play steps the physics, and losing the pad pauses the round. Prepare
+// One frame of dt seconds. Ready takes input only; play steps the physics, and losing the pad pauses the round. Language
 // and pause do not move. Descent runs only the descent; its pause does not move, and the landing frame changes only the phase.
 inline int squid_game_step(squid_game &g, const rv_istate &state, uint64_t abilities, float dt)
 {

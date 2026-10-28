@@ -1,6 +1,6 @@
 #pragma once
 
-// HUD text over the frame: the hint of the phase, the beer counter and the debug panel.
+// HUD text over the frame: the screen of the phase in the chosen language, and the debug panel.
 // Drawing only. The caller owns the font style (squid_draw_font_load in squid-draw.hpp) and the round data.
 
 #include <algorithm>
@@ -32,16 +32,16 @@ constexpr int SQUID_HUD_LINE_GAP_PX = 2;
 // Text stops this far short of each screen edge; a line wider than that wraps at spaces. The backdrop pads the text by
 // this much on each side.
 constexpr int SQUID_HUD_MARGIN_PX = 4;
-// Blank lines between the hint and the debug panel.
+// Blank lines between the screen and the debug panel.
 constexpr int SQUID_HUD_PANEL_GAP_LINES = 1;
 // Backdrop colour: near-black and opaque. The console has no blending yet (pdk/README.md), so a see-through panel is out.
 constexpr rv_color SQUID_HUD_BACKDROP_COLOUR = { 8, 9, 14 };
 
-// What the hint, the beer counter and the debug panel read from the round. Built positionally by squid-maid.cpp: keep
-// the field order.
+// What the screen and the debug panel read from the round. Built positionally by squid-maid.cpp: keep the field order.
 struct squid_hud_round {
-    squid_phase phase = squid_phase::prepare;
+    squid_phase phase = squid_phase::language;
     int beer_drunk = 0;
+    squid_lang lang = squid_lang::ru;
 };
 
 // What the debug panel shows. Built positionally by squid-maid.cpp: keep the field order.
@@ -54,52 +54,47 @@ struct squid_hud_debug {
     int round_absorbs = 0;
 };
 
-// Tables indexed by squid_phase: one row per phase, in enum order.
-constexpr auto SQUID_HUD_PHASE_LABELS = std::to_array<std::string_view>({
-    SQUID_TEXT_PHASE_PREPARE,
-    SQUID_TEXT_PHASE_READY,
-    SQUID_TEXT_PHASE_PLAY,
-    SQUID_TEXT_PHASE_PAUSE,
-    SQUID_TEXT_PHASE_DESCENT,
-    SQUID_TEXT_PHASE_PAUSE,
-    SQUID_TEXT_PHASE_LANDED,
-});
-static_assert(SQUID_HUD_PHASE_LABELS.size() == SQUID_PHASE_COUNT, "SQUID_HUD_PHASE_LABELS needs one label per phase");
+// The phase's label on the debug panel. The switch names every phase, so a new phase without a label is a warning.
+inline std::string_view squid_hud_label(const squid_texts &texts, squid_phase phase)
+{
+    switch (phase) {
+    case squid_phase::language:
+        return texts.phase_language;
+    case squid_phase::ready:
+        return texts.phase_ready;
+    case squid_phase::play:
+        return texts.phase_play;
+    case squid_phase::pause:
+    case squid_phase::descent_pause:
+        return texts.phase_pause;
+    case squid_phase::descent:
+        return texts.phase_descent;
+    case squid_phase::landed:
+        return texts.phase_landed;
+    }
+    return {};
+}
 
-// The lead line of the hint: what the player does now. None in the pauses.
-constexpr auto SQUID_HUD_PHASE_LEADS = std::to_array<std::string_view>({
-    SQUID_TEXT_LEAD_PREPARE,
-    SQUID_TEXT_LEAD_PREPARE,
-    SQUID_TEXT_LEAD_PLAY,
-    std::string_view{},
-    SQUID_TEXT_LEAD_DESCENT,
-    std::string_view{},
-    SQUID_TEXT_LEAD_LANDED,
-});
-static_assert(SQUID_HUD_PHASE_LEADS.size() == SQUID_PHASE_COUNT, "SQUID_HUD_PHASE_LEADS needs one lead per phase");
-
-constexpr auto SQUID_HUD_PHASE_HINTS = std::to_array<std::string_view>({
-    SQUID_TEXT_HINT_PREPARE,
-    SQUID_TEXT_HINT_READY,
-    SQUID_TEXT_HINT_PLAY,
-    SQUID_TEXT_HINT_PAUSE,
-    SQUID_TEXT_HINT_DESCENT,
-    SQUID_TEXT_HINT_PAUSE,
-    SQUID_TEXT_HINT_LANDED,
-});
-static_assert(SQUID_HUD_PHASE_HINTS.size() == SQUID_PHASE_COUNT, "SQUID_HUD_PHASE_HINTS needs one hint per phase");
-
-// The beer counter shows from play on, not while preparing or ready.
-constexpr auto SQUID_HUD_PHASE_SHOWS_BEER = std::to_array<bool>({
-    false,
-    false,
-    true,
-    true,
-    true,
-    true,
-    true,
-});
-static_assert(SQUID_HUD_PHASE_SHOWS_BEER.size() == SQUID_PHASE_COUNT, "SQUID_HUD_PHASE_SHOWS_BEER needs one flag per phase");
+// The phase's screen, a format string of the beer points and the goal.
+inline std::string_view squid_hud_screen(const squid_texts &texts, squid_phase phase)
+{
+    switch (phase) {
+    case squid_phase::language:
+        return SQUID_TEXT_SCREEN_LANGUAGE;
+    case squid_phase::ready:
+        return texts.screen_ready;
+    case squid_phase::play:
+        return texts.screen_play;
+    case squid_phase::pause:
+    case squid_phase::descent_pause:
+        return texts.screen_pause;
+    case squid_phase::descent:
+        return texts.screen_descent;
+    case squid_phase::landed:
+        return texts.screen_landed;
+    }
+    return {};
+}
 
 // Vertical step of one line: the font line plus the gap.
 inline int squid_hud_line_step(rv_pdklib::rv_font_style style)
@@ -171,38 +166,45 @@ inline void squid_hud_wrap(rv_pdklib::rv_font_style style, int max_px, std::stri
     }
 }
 
-// The hint: a lead line, then the buttons of the phase, then the beer counter in the phases that show it.
+// The screen of the phase with its beer numbers filled in; nothing for a phase without a screen.
 inline void
-squid_hud_hint_lines(rv_pdklib::rv_font_style style, int max_px, const squid_hud_round &round, squid_hud_lines &lines)
+squid_hud_screen_lines(rv_pdklib::rv_font_style style, int max_px, const squid_hud_round &round, squid_hud_lines &lines)
 {
-    const auto index = static_cast<std::size_t>(round.phase);
-    squid_hud_wrap(style, max_px, SQUID_HUD_PHASE_LEADS[index], lines);
-    squid_hud_wrap(style, max_px, SQUID_HUD_PHASE_HINTS[index], lines);
-    if (SQUID_HUD_PHASE_SHOWS_BEER[index]) {
-        const std::string text = std::format(SQUID_TEXT_BEER, round.beer_drunk, SQUID_BEER_GOAL);
-        squid_hud_wrap(style, max_px, text, lines);
+    const std::string_view screen = squid_hud_screen(squid_texts_of(round.lang), round.phase);
+    if (screen.empty()) {
+        return;
     }
+    const int beer = round.beer_drunk;
+    const int goal = SQUID_BEER_GOAL;
+    squid_hud_wrap(style, max_px, std::vformat(screen, std::make_format_args(beer, goal)), lines);
 }
 
 // The debug panel's lines, one string each: title, phase, target and actual tilt, source, ball counts by size, total mass,
 // the round's splits and absorbs, and the split-all key. Pure: the panel draws them, the harness reads them.
 inline auto squid_hud_debug_lines(const squid_hud_round &round, const squid_hud_debug &debug)
 {
+    const squid_texts &t = squid_texts_of(round.lang);
     const squid_census &c = debug.census;
+    const std::string_view label = squid_hud_label(t, round.phase);
+    const std::string_view source = debug.sensor ? t.source_sensor : t.source_reserve;
+    const squid_tilt target = debug.target;
+    const squid_tilt actual = debug.actual;
+    const int splits = debug.round_splits;
+    const int absorbs = debug.round_absorbs;
     return std::array{
-        std::string{ SQUID_TEXT_DEBUG_TITLE },
-        std::format(SQUID_TEXT_DEBUG_PHASE, SQUID_HUD_PHASE_LABELS[static_cast<std::size_t>(round.phase)]),
-        std::format(SQUID_TEXT_DEBUG_TARGET, SQUID_TEXT_AXIS_X, debug.target.x_deg, SQUID_TEXT_AXIS_Z, debug.target.z_deg),
-        std::format(SQUID_TEXT_DEBUG_ACTUAL, SQUID_TEXT_AXIS_X, debug.actual.x_deg, SQUID_TEXT_AXIS_Z, debug.actual.z_deg),
-        std::format(SQUID_TEXT_DEBUG_SOURCE, debug.sensor ? SQUID_TEXT_SOURCE_SENSOR : SQUID_TEXT_SOURCE_RESERVE),
-        std::format(SQUID_TEXT_DEBUG_BALLS, c.balls[0], c.balls[1], c.balls[2], c.balls[3]),
-        std::format(SQUID_TEXT_DEBUG_MASS, c.total_mass),
-        std::format(SQUID_TEXT_DEBUG_ROUND, debug.round_splits, debug.round_absorbs),
-        std::string{ SQUID_TEXT_DEBUG_SPLIT },
+        std::string{ t.debug_title },
+        std::vformat(t.debug_phase, std::make_format_args(label)),
+        std::vformat(t.debug_target, std::make_format_args(SQUID_TEXT_AXIS_X, target.x_deg, SQUID_TEXT_AXIS_Z, target.z_deg)),
+        std::vformat(t.debug_actual, std::make_format_args(SQUID_TEXT_AXIS_X, actual.x_deg, SQUID_TEXT_AXIS_Z, actual.z_deg)),
+        std::vformat(t.debug_source, std::make_format_args(source)),
+        std::vformat(t.debug_balls, std::make_format_args(c.balls[0], c.balls[1], c.balls[2], c.balls[3])),
+        std::vformat(t.debug_mass, std::make_format_args(c.total_mass)),
+        std::vformat(t.debug_round, std::make_format_args(splits, absorbs)),
+        std::string{ t.debug_split },
     };
 }
 
-// The debug panel's lines, wrapped like the hint.
+// The debug panel's lines, wrapped like the screen.
 inline void squid_hud_debug_panel_lines(rv_pdklib::rv_font_style style,
     int max_px,
     const squid_hud_round &round,
@@ -214,7 +216,7 @@ inline void squid_hud_debug_panel_lines(rv_pdklib::rv_font_style style,
     }
 }
 
-// Every line of the HUD in draw order: the hint, then the debug panel when show_debug is set. Laid out before anything
+// Every line of the HUD in draw order: the screen, then the debug panel when show_debug is set. Laid out before anything
 // is drawn, so the backdrop can be sized to the text it sits behind.
 inline squid_hud_lines squid_hud_layout(rv_pdklib::rv_font_style style,
     int max_px,
@@ -223,9 +225,9 @@ inline squid_hud_lines squid_hud_layout(rv_pdklib::rv_font_style style,
     bool show_debug)
 {
     squid_hud_lines lines;
-    squid_hud_hint_lines(style, max_px, round, lines);
+    squid_hud_screen_lines(style, max_px, round, lines);
     if (show_debug) {
-        for (int i = 0; i < SQUID_HUD_PANEL_GAP_LINES; ++i) {
+        for (int i = 0; i < SQUID_HUD_PANEL_GAP_LINES && !lines.empty(); ++i) {
             lines.emplace_back();
         }
         squid_hud_debug_panel_lines(style, max_px, round, debug, lines);
@@ -235,8 +237,12 @@ inline squid_hud_lines squid_hud_layout(rv_pdklib::rv_font_style style,
 
 // One flat sprite centred on the bottom edge: as wide as the widest line plus the margin on each side, from the margin
 // above the first line at top down to the bottom edge. Refused puts return their code.
-inline int
-squid_hud_backdrop_put(rv_cv *cv, rv_pdklib::rv_font_style style, const squid_hud_lines &lines, int screen_w, int screen_h, int top)
+inline int squid_hud_backdrop_put(rv_cv *cv,
+    rv_pdklib::rv_font_style style,
+    const squid_hud_lines &lines,
+    int screen_w,
+    int screen_h,
+    int top)
 {
     int widest = 0;
     for (const std::string &line : lines) {
@@ -258,9 +264,9 @@ squid_hud_backdrop_put(rv_cv *cv, rv_pdklib::rv_font_style style, const squid_hu
     return static_cast<int>(rv_cv_frame_put(cv, &primitive));
 }
 
-// Draws the HUD over the frame at the centre of the bottom edge: a backdrop behind the hint, and the debug panel under it
-// when show_debug is set. Every part is drawn even when one is refused; the first refusal is returned. Without a screen
-// size there is nothing to lay out to: that refusal is returned before anything is drawn.
+// Draws the HUD over the frame at the centre of the bottom edge: a backdrop behind the screen, and the debug panel under
+// it when show_debug is set. No lines, no backdrop. Every part is drawn even when one is refused; the first refusal is
+// returned. Without a screen size there is nothing to lay out to: that refusal is returned before anything is drawn.
 inline int squid_hud_draw(rv_cv *cv,
     rv_pdklib::rv_font_style style,
     const squid_hud_round &round,
@@ -277,6 +283,9 @@ inline int squid_hud_draw(rv_cv *cv,
     }
     const int max_px = static_cast<int>(width) - 2 * SQUID_HUD_MARGIN_PX;
     const squid_hud_lines lines = squid_hud_layout(style, max_px, round, debug, show_debug);
+    if (lines.empty()) {
+        return RV_OK;
+    }
 
     // Same depth key: primitives of one bucket draw in submission order, so the backdrop goes first and the text lands on it.
     const int step = squid_hud_line_step(style);
