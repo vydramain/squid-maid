@@ -2,9 +2,11 @@
 
 // Drawing constants, the font's video assets and the star field. Drawing only; the state comes from the caller.
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <numeric>
 #include <vector>
 
 #include "pdk/cv/rv_cv.h"
@@ -173,12 +175,22 @@ constexpr std::array<squid_star, SQUID_STAR_COUNT> squid_star_table()
 
 constexpr auto SQUID_STARS = squid_star_table();
 
-// Puts every star as a flat sprite at SQUID_STAR_DEPTH. A refused put is kept as the first code and the rest are still
-// put; the caller logs the code.
-inline int squid_draw_stars(rv_cv *cv)
+// The order the stars light in: star i is the (i * step mod count)-th to light. The step shares no factor with the count,
+// so every star gets its own turn, and the turns jump across the table.
+constexpr std::size_t SQUID_STAR_LIGHT_STEP = 97;
+static_assert(std::gcd(SQUID_STAR_LIGHT_STEP, SQUID_STAR_COUNT) == 1, "the light order must visit every star once");
+
+// Puts the lit share (0..1) of the stars as flat sprites at SQUID_STAR_DEPTH. A refused put is kept as the first code
+// and the rest are still put; the caller logs the code.
+inline int squid_draw_stars(rv_cv *cv, float lit)
 {
+    const auto lit_count = static_cast<std::size_t>(std::clamp(lit, 0.0f, 1.0f) * static_cast<float>(SQUID_STAR_COUNT));
     int64_t first_code = RV_OK;
-    for (const squid_star &star : SQUID_STARS) {
+    for (std::size_t i = 0; i < SQUID_STAR_COUNT; ++i) {
+        if (i * SQUID_STAR_LIGHT_STEP % SQUID_STAR_COUNT >= lit_count) {
+            continue;
+        }
+        const squid_star &star = SQUID_STARS[i];
         rv_primitive primitive{};
         primitive.type = RV_PRIMITIVE_SPRITE;
         primitive.depth = SQUID_STAR_DEPTH;

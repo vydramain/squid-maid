@@ -229,21 +229,29 @@ inline int squid_view_pose(rv_pdkkit::ecs_world &world,
     return squid_view_flight_set(world, id, flight->model, d);
 }
 
-// Shows slot i as body i with its pose and hides the slots past the count. Every slot is visited; the first refusal
-// is returned. The phase and descent place Alkoldun on his flight.
+// Shows slot i as body i with its pose at the stage's scale and hides the slots past the count; a zero scale hides
+// them all. Every slot is visited; the first refusal is returned. The phase and descent place Alkoldun on his flight.
 inline int squid_view_update(rv_pdkkit::ecs_world &world,
     const squid_view_pool &pool,
     const squid_bodies &bodies,
     squid_phase phase,
-    const squid_descent &d)
+    const squid_descent &d,
+    float scale)
 {
+    rv_pdklib::fx fx_scale{};
+    const int scale_code = rv_pdklib::fx_from_double(scale, fx_scale);
+    if (scale_code != RV_OK) {
+        RV_LOG_ERR(SQUID_VIEW_TAG, "body scale {} is outside the Q20.12 range; bodies not set", scale);
+        return scale_code;
+    }
     int first = RV_OK;
     for (int i = 0; i < SQUID_BODY_CAPACITY; ++i) {
         const squid_view_slot &slot = pool.slots[i];
-        const bool shown = i < bodies.count;
+        const bool shown = i < bodies.count && fx_scale > 0;
         const int hidden_code = squid_scene_body_hidden(world, slot.id, !shown);
         const int pose_code = shown ? squid_view_pose(world, slot.id, bodies.items[i], phase, d) : RV_OK;
-        const int code = hidden_code != RV_OK ? hidden_code : pose_code;
+        const int grow_code = shown ? squid_scene_body_scale(world, slot.id, fx_scale) : RV_OK;
+        const int code = hidden_code != RV_OK ? hidden_code : pose_code != RV_OK ? pose_code : grow_code;
         if (code != RV_OK && first == RV_OK) {
             first = code;
         }

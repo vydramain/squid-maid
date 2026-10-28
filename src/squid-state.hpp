@@ -34,10 +34,13 @@ constexpr std::uint32_t SQUID_LAYOUT_SEED = 1018;
 // Draws per body before the layout is refused. A spot that is not found in this many tries is an error, not a retry.
 constexpr int SQUID_LAYOUT_ATTEMPTS = 10000;
 
-// language: the player picks the language; ready: the tilt calibration; then the round.
+// language: the player picks the language; intro: the stars light, then the Earth grows (timed); ready: the tilt
+// calibration over the far Earth; arrive: the camera flies in and the bodies grow (timed); then the round.
 enum class squid_phase {
     language,
+    intro,
     ready,
+    arrive,
     play,
     pause,
     descent,
@@ -56,24 +59,30 @@ enum class squid_command {
 enum class squid_event {
     pad_lost,
     goal_reached,
-    landed
+    landed,
+    intro_done,
+    arrived
 };
 
 // Enumerator counts, from the enums; the name and event tables are sized by them.
 constexpr std::size_t SQUID_PHASE_COUNT = static_cast<std::size_t>(squid_phase::landed) + 1;
 constexpr std::size_t SQUID_COMMAND_COUNT = static_cast<std::size_t>(squid_command::split_all) + 1;
-constexpr std::size_t SQUID_EVENT_COUNT = static_cast<std::size_t>(squid_event::landed) + 1;
+constexpr std::size_t SQUID_EVENT_COUNT = static_cast<std::size_t>(squid_event::arrived) + 1;
 
 // Names for the refusal log, indexed by the enum value.
 inline constexpr std::array<const char *, SQUID_PHASE_COUNT>
-    SQUID_PHASE_NAMES{ "language", "ready", "play", "pause", "descent", "descent_pause", "landed" };
+    SQUID_PHASE_NAMES{ "language", "intro", "ready", "arrive", "play", "pause", "descent", "descent_pause", "landed" };
 inline constexpr std::array<const char *, SQUID_COMMAND_COUNT> SQUID_COMMAND_NAMES{ "pick",
     "calibrate",
     "start",
     "pause",
     "restart",
     "split_all" };
-inline constexpr std::array<const char *, SQUID_EVENT_COUNT> SQUID_EVENT_NAMES{ "pad_lost", "goal_reached", "landed" };
+inline constexpr std::array<const char *, SQUID_EVENT_COUNT> SQUID_EVENT_NAMES{ "pad_lost",
+    "goal_reached",
+    "landed",
+    "intro_done",
+    "arrived" };
 
 template <std::size_t N>
 constexpr bool squid_names_set(const std::array<const char *, N> &names)
@@ -96,10 +105,10 @@ struct squid_edge {
 };
 
 inline constexpr auto SQUID_EDGES = std::to_array<squid_edge>({
-    { squid_phase::language, squid_command::pick, squid_phase::ready },
+    { squid_phase::language, squid_command::pick, squid_phase::intro },
     { squid_phase::ready, squid_command::calibrate, squid_phase::ready },
     { squid_phase::pause, squid_command::calibrate, squid_phase::pause },
-    { squid_phase::ready, squid_command::start, squid_phase::play },
+    { squid_phase::ready, squid_command::start, squid_phase::arrive },
     { squid_phase::play, squid_command::pause, squid_phase::pause },
     { squid_phase::pause, squid_command::pause, squid_phase::play },
     { squid_phase::ready, squid_command::restart, squid_phase::ready },
@@ -125,14 +134,25 @@ inline constexpr auto SQUID_EVENT_EDGES = std::to_array<squid_event_edge>({
     { squid_phase::descent, squid_event::pad_lost, squid_phase::descent_pause },
     { squid_phase::play, squid_event::goal_reached, squid_phase::descent },
     { squid_phase::descent, squid_event::landed, squid_phase::landed },
+    { squid_phase::intro, squid_event::intro_done, squid_phase::ready },
+    { squid_phase::arrive, squid_event::arrived, squid_phase::play },
 });
 // Every event needs a row, or the round could never make that move.
 static_assert(std::ranges::all_of(std::views::iota(0uz, SQUID_EVENT_COUNT), [](std::size_t e) {
     return std::ranges::contains(SQUID_EVENT_EDGES, static_cast<squid_event>(e), &squid_event_edge::event);
 }));
 
+// Azimuth of the camera the phase is seen from: the far camera in the calibration, the scene camera otherwise. The tilt
+// is read in that camera's screen frame, so a calibration over the far Earth carries over to the round's view.
+inline float squid_phase_azimuth(squid_phase phase)
+{
+    return phase == squid_phase::ready ? SQUID_FAR_AZIMUTH_DEG : SQUID_CAMERA_AZIMUTH_DEG;
+}
+
 struct squid_game {
     squid_phase phase = squid_phase::language;
+    // Seconds since the phase was entered; the timed phases (intro, arrive) end on it, and the stage animates by it.
+    float phase_s = 0;
     squid_input input{};
     // The body set stepped in play, and the splits and absorbs of the current frame; zero on frames that do not step
     // the physics (prepare, ready, pause, pad loss, a frame the physics refused); a step refused for its dt changes nothing.
@@ -261,6 +281,7 @@ inline int squid_game_init(squid_game &g)
     g.drift_rng.seed(SQUID_LAYOUT_SEED);
     squid_motion_birth(g.bodies, g.drift_rng);
     g.phase = squid_phase::language;
+    g.phase_s = 0;
     return RV_OK;
 }
 
@@ -397,6 +418,13 @@ inline int squid_game_apply(squid_game &g, squid_command command, const rv_istat
     return RV_OK;
 }
 
+// Moves to a phase; entering a different phase restarts its clock.
+inline void squid_game_enter(squid_game &g, squid_phase to)
+{
+    g.phase_s = to == g.phase ? g.phase_s : 0.0f;
+    g.phase = to;
+}
+
 // Applies a command to the phase table; a pair not in the table is refused with the reason and nothing changes.
 inline int squid_game_command(squid_game &g, squid_command command, const rv_istate &state, uint64_t abilities)
 {
@@ -412,7 +440,7 @@ inline int squid_game_command(squid_game &g, squid_command command, const rv_ist
     if (rc != RV_OK) {
         return rc;
     }
-    g.phase = edge->to;
+    squid_game_enter(g, edge->to);
     return RV_OK;
 }
 
@@ -429,7 +457,7 @@ inline int squid_game_fire(squid_game &g, squid_event event)
             SQUID_PHASE_NAMES[static_cast<std::size_t>(g.phase)]);
         return RV_ERR_INVAL;
     }
-    g.phase = it->to;
+    squid_game_enter(g, it->to);
     return RV_OK;
 }
 
@@ -438,7 +466,7 @@ inline int squid_game_fire(squid_game &g, squid_event event)
 inline int squid_game_play(squid_game &g, const rv_istate &state, uint64_t abilities, float dt)
 {
     squid_input next_input = g.input;
-    const int input_rc = squid_input_step(next_input, state, abilities, dt);
+    const int input_rc = squid_input_step(next_input, state, abilities, dt, squid_phase_azimuth(g.phase));
     if (input_rc != RV_OK) {
         return input_rc;
     }
@@ -470,8 +498,21 @@ inline int squid_game_descend(squid_game &g, uint64_t abilities, float dt)
     return squid_descent_advance(g.descent, dt) ? squid_game_fire(g, squid_event::landed) : RV_OK;
 }
 
-// One frame of dt seconds. Ready takes input only; play steps the physics, and losing the pad pauses the round. Language
-// and pause do not move. Descent runs only the descent; its pause does not move, and the landing frame changes only the phase.
+// The timed phases end when their clock passes their length: intro to the calibration, arrive to the round.
+inline int squid_game_timed(squid_game &g)
+{
+    if (g.phase == squid_phase::intro && g.phase_s >= SQUID_INTRO_S) {
+        return squid_game_fire(g, squid_event::intro_done);
+    }
+    if (g.phase == squid_phase::arrive && g.phase_s >= SQUID_ARRIVE_S) {
+        return squid_game_fire(g, squid_event::arrived);
+    }
+    return RV_OK;
+}
+
+// One frame of dt seconds. The phase clock runs in every phase and ends the timed ones. Ready takes input only; play
+// steps the physics, and losing the pad pauses the round. Language, intro, arrive and pause do not move. Descent runs
+// only the descent; its pause does not move, and the landing frame changes only the phase.
 inline int squid_game_step(squid_game &g, const rv_istate &state, uint64_t abilities, float dt)
 {
     const bool dt_bad = !std::isfinite(dt) || dt <= 0.0f;
@@ -481,6 +522,11 @@ inline int squid_game_step(squid_game &g, const rv_istate &state, uint64_t abili
     }
     // The counts are of this frame only: a frame that steps no physics leaves them zero.
     g.events = squid_event_counts{};
+    g.phase_s += dt;
+    const bool timed = g.phase == squid_phase::intro || g.phase == squid_phase::arrive;
+    if (timed) {
+        return squid_game_timed(g);
+    }
     if (g.phase == squid_phase::descent) {
         return squid_game_descend(g, abilities, dt);
     }
@@ -494,7 +540,8 @@ inline int squid_game_step(squid_game &g, const rv_istate &state, uint64_t abili
         RV_LOG_INFO(squid_state_tag, "pad lost: round paused");
         return squid_game_fire(g, squid_event::pad_lost);
     }
-    return playing ? squid_game_play(g, state, abilities, dt) : squid_input_step(g.input, state, abilities, dt);
+    return playing ? squid_game_play(g, state, abilities, dt) :
+                     squid_input_step(g.input, state, abilities, dt, squid_phase_azimuth(g.phase));
 }
 
 } // namespace squid

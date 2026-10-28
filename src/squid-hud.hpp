@@ -60,8 +60,12 @@ inline std::string_view squid_hud_label(const squid_texts &texts, squid_phase ph
     switch (phase) {
     case squid_phase::language:
         return texts.phase_language;
+    case squid_phase::intro:
+        return texts.phase_intro;
     case squid_phase::ready:
         return texts.phase_ready;
+    case squid_phase::arrive:
+        return texts.phase_arrive;
     case squid_phase::play:
         return texts.phase_play;
     case squid_phase::pause:
@@ -75,12 +79,15 @@ inline std::string_view squid_hud_label(const squid_texts &texts, squid_phase ph
     return {};
 }
 
-// The phase's screen, a format string of the beer points and the goal.
+// The phase's screen, a format string of the beer points and the goal; empty in the intro and the start, which show none.
 inline std::string_view squid_hud_screen(const squid_texts &texts, squid_phase phase)
 {
     switch (phase) {
     case squid_phase::language:
         return SQUID_TEXT_SCREEN_LANGUAGE;
+    case squid_phase::intro:
+    case squid_phase::arrive:
+        return {};
     case squid_phase::ready:
         return texts.screen_ready;
     case squid_phase::play:

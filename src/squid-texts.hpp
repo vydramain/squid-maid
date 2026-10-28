@@ -31,12 +31,14 @@ constexpr std::string_view SQUID_TEXT_AXIS_Z = "Z";
 struct squid_texts {
     // Phase labels of the debug panel.
     std::string_view phase_language;
+    std::string_view phase_intro;
     std::string_view phase_ready;
+    std::string_view phase_arrive;
     std::string_view phase_play;
     std::string_view phase_pause;
     std::string_view phase_descent;
     std::string_view phase_landed;
-    // Screens by phase.
+    // Screens by phase; the intro and the start show none.
     std::string_view screen_ready;
     std::string_view screen_play;
     std::string_view screen_pause;
@@ -60,7 +62,9 @@ struct squid_texts {
 constexpr auto SQUID_TEXTS = std::to_array<squid_texts>({
     {
         .phase_language = "язык",
+        .phase_intro = "заставка",
         .phase_ready = "калибровка",
+        .phase_arrive = "подлёт",
         .phase_play = "игра",
         .phase_pause = "пауза",
         .phase_descent = "спуск",
@@ -88,7 +92,9 @@ constexpr auto SQUID_TEXTS = std::to_array<squid_texts>({
     },
     {
         .phase_language = "language",
+        .phase_intro = "intro",
         .phase_ready = "calibration",
+        .phase_arrive = "arrival",
         .phase_play = "play",
         .phase_pause = "pause",
         .phase_descent = "descent",

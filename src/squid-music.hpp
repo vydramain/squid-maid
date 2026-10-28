@@ -52,7 +52,9 @@ constexpr std::size_t SQUID_MOOD_COUNT = static_cast<std::size_t>(squid_mood::co
 // The mood of each phase, indexed by squid_phase. The last bottle is a game phase, see squid_mood_of.
 inline constexpr squid_mood SQUID_PHASE_MOODS[] = {
     squid_mood::menu,   // language
+    squid_mood::menu,   // intro
     squid_mood::menu,   // ready
+    squid_mood::game,   // arrive
     squid_mood::game,   // play
     squid_mood::game,   // pause
     squid_mood::finale, // descent

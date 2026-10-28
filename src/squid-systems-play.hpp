@@ -1,6 +1,6 @@
 #pragma once
 
-// The first four systems of the squid frame, in run order: input, round, tilt, bodies. They reach the round and the view
+// The first five systems of the squid frame, in run order: input, round, tilt, stage, bodies. They reach the round and the view
 // through their components; the disc supplies the frame's input and the round's dt before they run. A step's refusal is
 // counted in the round and the system returns RV_OK: the kit ends the frame at the first returned code. Only a
 // holder's code is returned: none or two.
@@ -22,6 +22,7 @@
 #include "squid-components.hpp"
 #include "squid-input.hpp"
 #include "squid-scene.hpp"
+#include "squid-stage.hpp"
 #include "squid-state.hpp"
 #include "squid-view.hpp"
 
@@ -35,6 +36,7 @@ inline constexpr const char *SQUID_SYSTEMS_TAG = "systems";
 inline constexpr std::string_view SQUID_SYSTEM_INPUT = "squid-input";
 inline constexpr std::string_view SQUID_SYSTEM_ROUND = "squid-round";
 inline constexpr std::string_view SQUID_SYSTEM_TILT = "squid-tilt";
+inline constexpr std::string_view SQUID_SYSTEM_STAGE = "squid-stage";
 inline constexpr std::string_view SQUID_SYSTEM_BODIES = "squid-bodies";
 
 // A front button and the command it gives in one phase. A press with no row in the current phase does nothing.
@@ -109,12 +111,13 @@ inline int squid_input_press(squid_round &round, uint64_t pressed, const rv_ista
 // The tilt the input asks for this frame, in the screen's frame; the smoothed game tilt follows it.
 inline squid_tilt squid_target_tilt(const squid_round &round, const rv_istate &state)
 {
+    const float azimuth = squid_phase_azimuth(round.game.phase);
     if (round.sensor) {
-        return squid_input_camera_frame(squid_input_sensor_target(round.game.input.neutral, state.motion));
+        return squid_input_camera_frame(squid_input_sensor_target(round.game.input.neutral, state.motion), azimuth);
     }
     // A zero step moves no key and returns the target; the copy keeps the game's keys as they are.
     squid_input probe = round.game.input;
-    return squid_input_camera_frame(squid_input_reserve_step(probe, state, 0.0f));
+    return squid_input_camera_frame(squid_input_reserve_step(probe, state, 0.0f), azimuth);
 }
 
 // Edges and the debug switch, then the frame's commands. L4 flips the panel, which starts closed; L5 is a command only
@@ -190,8 +193,22 @@ inline int squid_system_tilt(rv_pdkkit::ecs_world &world, const rv_pdkkit::ecs_f
     return RV_OK;
 }
 
-// The pool shows the bodies after this frame's step; a paused frame leaves them as they were. A refusal is counted, not
-// returned.
+// The camera and the structure's scale follow the stage of the round's phase. A refusal is counted, not returned.
+inline int squid_system_stage(rv_pdkkit::ecs_world &world, const rv_pdkkit::ecs_frame &)
+{
+    squid_round *round = nullptr;
+    squid_view *view = nullptr;
+    const int holder = squid_round_view_of(world, round, view);
+    if (holder != RV_OK) {
+        return holder;
+    }
+    const squid_stage stage = squid_stage_of(round->game.phase, round->game.phase_s);
+    squid_round_note(*round, squid_stage_apply(world, view->objects, stage));
+    return RV_OK;
+}
+
+// The pool shows the bodies after this frame's step, at the stage's scale; a paused frame leaves them as they were. A refusal
+// is counted, not returned.
 inline int squid_system_bodies(rv_pdkkit::ecs_world &world, const rv_pdkkit::ecs_frame &)
 {
     squid_round *round = nullptr;
@@ -203,7 +220,9 @@ inline int squid_system_bodies(rv_pdkkit::ecs_world &world, const rv_pdkkit::ecs
     if (!view->bodies_ready) {
         return RV_OK;
     }
-    squid_round_note(*round, squid_view_update(world, view->pool, round->game.bodies, round->game.phase, round->game.descent));
+    const float scale = squid_stage_of(round->game.phase, round->game.phase_s).bodies;
+    squid_round_note(*round,
+        squid_view_update(world, view->pool, round->game.bodies, round->game.phase, round->game.descent, scale));
     return RV_OK;
 }
 
@@ -212,15 +231,16 @@ struct squid_system_entry {
     rv_pdkkit::ecs_system run;
 };
 
-// The four systems in run order: the frame calls them in registration order.
+// The five systems in run order: the frame calls them in registration order.
 inline constexpr auto SQUID_PLAY_SYSTEMS = std::to_array<squid_system_entry>({
     { SQUID_SYSTEM_INPUT, squid_system_input },
     { SQUID_SYSTEM_ROUND, squid_system_round },
     { SQUID_SYSTEM_TILT, squid_system_tilt },
+    { SQUID_SYSTEM_STAGE, squid_system_stage },
     { SQUID_SYSTEM_BODIES, squid_system_bodies },
 });
 
-// Adds the four systems in run order. A refusal is logged with the system's name and code, and returned.
+// Adds the five systems in run order. A refusal is logged with the system's name and code, and returned.
 inline int squid_systems_play_register(rv_pdkkit::ecs_world &world)
 {
     for (const squid_system_entry &entry : SQUID_PLAY_SYSTEMS) {

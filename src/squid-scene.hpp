@@ -40,11 +40,18 @@ inline constexpr const char *SQUID_SCENE_POSE_PITCH_NAME = "pose_pitch";
 // The pose group that scales the structure, and the Earth plate it places; both are checked on load.
 inline constexpr const char *SQUID_SCENE_POSE_SCALE_NAME = "pose_scale";
 inline constexpr const char *SQUID_SCENE_EARTH_NAME = "earth";
+// The lens object: the stage flies it from the far pose to its scene pose.
+inline constexpr const char *SQUID_SCENE_CAMERA_NAME = "camera";
 
 // Entities of the scene objects the disc moves or reports, and of the group the balls load under.
 struct squid_scene_objects {
     rv_pdkkit::ecs_id tilt{};
     rv_pdkkit::ecs_id pose_yaw{};
+    rv_pdkkit::ecs_id pose_scale{};
+    rv_pdkkit::ecs_id camera{};
+    // The camera's pose in the scene file: the round's view, where the start flies to.
+    rv_pdklib::fx_vec3 camera_position{};
+    rv_pdklib::fx_vec3 camera_rotation{};
 };
 
 // Entity of the object with the name in the load. A missing object is an error; the name and the code are in the log.
@@ -274,6 +281,25 @@ inline int squid_scene_load(rv_pdkkit::ecs_world &world, rv_cd *cd, squid_scene_
         squid_scene_discard(world, load_number);
         return pose_code;
     }
+    const int scale_code = squid_scene_find(world, load_number, SQUID_SCENE_POSE_SCALE_NAME, objects.pose_scale);
+    if (scale_code != RV_OK) {
+        squid_scene_discard(world, load_number);
+        return scale_code;
+    }
+    const int camera_code = squid_scene_find(world, load_number, SQUID_SCENE_CAMERA_NAME, objects.camera);
+    if (camera_code != RV_OK) {
+        squid_scene_discard(world, load_number);
+        return camera_code;
+    }
+    const rv_pdkkit::ecs_component_transform *camera =
+        rv_pdkkit::ecs_component_get<rv_pdkkit::ecs_component_transform>(world, objects.camera);
+    if (camera == nullptr) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "'{}' object has no transform", SQUID_SCENE_CAMERA_NAME);
+        squid_scene_discard(world, load_number);
+        return RV_ERR_NOENT;
+    }
+    objects.camera_position = camera->position;
+    objects.camera_rotation = camera->rotation;
     return RV_OK;
 }
 
@@ -358,6 +384,18 @@ inline int squid_scene_body_set(rv_pdkkit::ecs_world &world,
     }
     transform->position = position;
     transform->rotation = rotation;
+    return RV_OK;
+}
+
+// Scales a body entity uniformly; the stage grows the bodies from a point at the start.
+inline int squid_scene_body_scale(rv_pdkkit::ecs_world &world, rv_pdkkit::ecs_id id, rv_pdklib::fx scale)
+{
+    rv_pdkkit::ecs_component_transform *transform = rv_pdkkit::ecs_component_get<rv_pdkkit::ecs_component_transform>(world, id);
+    if (transform == nullptr) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "body has no transform; scale not set");
+        return RV_ERR_NOENT;
+    }
+    transform->scale = rv_pdklib::fx_vec3{ scale, scale, scale };
     return RV_OK;
 }
 

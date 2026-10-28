@@ -179,4 +179,24 @@ constexpr float SQUID_CAMERA_AZIMUTH_DEG = 30.0f;
 // about the plate normal under the tilt root; squid_gravity_disc turns the gravity into those axes to match.
 constexpr float SQUID_POSE_YAW_DEG = -30.0f;
 
+// The opening, in seconds: the stars light one by one, then the Earth grows from a point; the calibration starts after.
+constexpr float SQUID_INTRO_STARS_S = 1.5f;
+constexpr float SQUID_INTRO_EARTH_S = 1.0f;
+constexpr float SQUID_INTRO_S = SQUID_INTRO_STARS_S + SQUID_INTRO_EARTH_S;
+
+// The start, in seconds: the camera flies from the far pose to the scene's camera, then the bodies grow from a point;
+// the round starts after.
+constexpr float SQUID_ARRIVE_CAMERA_S = 1.0f;
+constexpr float SQUID_ARRIVE_BODIES_S = 0.5f;
+constexpr float SQUID_ARRIVE_S = SQUID_ARRIVE_CAMERA_S + SQUID_ARRIVE_BODIES_S;
+
+// The far camera of the calibration: straight in front of the structure (the pose yaw is its front), pitched 45 deg
+// down. The tilt is read in this camera's screen frame during the calibration and in the scene camera's in the round
+// (squid_phase_azimuth). It stands SQUID_FAR_DISTANCE from the dome centre, inside the lens's far plane (40), and the line
+// to the centre is SQUID_FAR_RAISE_DEG shallower than the pitch, so the small Earth sits above the text at the bottom.
+constexpr float SQUID_FAR_AZIMUTH_DEG = SQUID_POSE_YAW_DEG;
+constexpr float SQUID_FAR_PITCH_DEG = 45.0f;
+constexpr float SQUID_FAR_RAISE_DEG = 5.0f;
+constexpr float SQUID_FAR_DISTANCE = 30.0f;
+
 } // namespace squid
