@@ -87,8 +87,6 @@ object = "7a500002"
 name = "model"
 source = "earth.gltf"
 
-# The plate is drawn in the decal window, nearer than the models under it: it covers the elephants and the part of
-# the turtle under it, whose near faces would otherwise win the depth sort over the plate's large top triangles.
 [[component]]
 object = "7a500002"
 name = "decal"
@@ -170,16 +168,6 @@ object = "7a500030"
 name = "model"
 source = "turtle.gltf"
 
-# The game's eye: azimuth 30 and elevation 25 deg at distance 20.5 from the look point (0, 0.6, 0). The kit takes the
-# eye from the world translation and the look from the z column of R = Ry * Rx * Rz, so pitch 25 and yaw -150.
-# The lens is the game's fov 30, near 8, far 40.
-# Elevation 25 was chosen from renders at 15, 20, 25 and 30: 15 leaves the level plate nearly edge-on, 30 hides
-# the structure under it; 25 shows the plate from above with the structure and turtle, and with D-pad E held the
-# dome cap stays in the frame.
-# Distance 20.5 for fov 30 was checked on frames 8 and 128 at pitch 30: no ball leaves the 320x240 frame.
-# The look point is raised to y 0.6 so the Earth sits low in the frame.
-# Near 8 and far 40: the dome sphere with size-4 balls lies about 16 to 26 from the eye; the planes cut none of it.
-# Azimuth 30 matches SQUID_CAMERA_AZIMUTH_DEG in src/squid-params.hpp, by which the input turns the D-pad.
 [[object]]
 id = "7a500040"
 parent = ""
@@ -192,7 +180,7 @@ text = "camera"
 [[component]]
 object = "7a500040"
 name = "transform"
-position = [9.2896, 9.2637, 16.09]
+position = [6.493, 7.8457, 11.4568]
 rotation = [25, -150, 0]
 
 [[component]]
@@ -202,8 +190,6 @@ fov = 30
 near_plane = 8
 far_plane = 40
 
-# Working state of the round: the game's systems read it, and the editor shows the object. It holds no scene data.
-# The music state (squid_music) sits on the same object.
 [[object]]
 id = "7a500050"
 parent = ""
