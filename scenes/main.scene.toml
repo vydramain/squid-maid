@@ -203,6 +203,7 @@ near_plane = 8
 far_plane = 40
 
 # Working state of the round: the game's systems read it, and the editor shows the object. It holds no scene data.
+# The music state (squid_music) sits on the same object.
 [[object]]
 id = "7a500050"
 parent = ""
@@ -223,3 +224,7 @@ name = "squid_view"
 [[component]]
 object = "7a500050"
 name = "squid_effects"
+
+[[component]]
+object = "7a500050"
+name = "squid_music"
