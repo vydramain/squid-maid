@@ -22,8 +22,9 @@ format = "idx8"
 files = ["assets/snd/mus_*.wav"]
 
 [budget.pcca]
-# Over the default 512 KiB: 15 effect sounds (356918 bytes of baked PCM) and the ambient's two 1-second stream slots (176400 bytes).
-# Solid Maid and example-cpp declare the same 1 MiB; voice_count stays at its default 24.
+# 1 MiB, as Solid Maid and example-cpp declare: the 15 effect sounds take 356918 bytes of baked PCM;
+# the music streams from the drive and takes no sound memory.
+# voice_count stays at its default 24.
 sound_memory_size = 1048576
 
 [budget.pccg]
