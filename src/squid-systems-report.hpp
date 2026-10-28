@@ -189,7 +189,7 @@ inline int squid_system_log(rv_pdkkit::ecs_world &world, const rv_pdkkit::ecs_fr
     if (view_code != RV_OK) {
         return view_code;
     }
-    const bool started = round->phase_before == squid_phase::ready && round->game.phase == squid_phase::play;
+    const bool started = round->phase_before == squid_phase::arrive && round->game.phase == squid_phase::play;
     squid_round_note(*round, started ? squid_log_config(round->sensor) : RV_OK);
     squid_log_period(*round, world, *view);
     ++round->frame;

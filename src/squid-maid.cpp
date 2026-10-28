@@ -15,6 +15,7 @@
 #include "squid-hud.hpp"
 #include "squid-music.hpp"
 #include "squid-scene.hpp"
+#include "squid-stage.hpp"
 #include "squid-state.hpp"
 #include "squid-systems-play.hpp"
 #include "squid-systems-report.hpp"
@@ -83,7 +84,7 @@ public:
     void frame_render()
     {
         frame_begin(SQUID_DRAW_BACKGROUND);
-        draw_step("stars", squid_draw_stars(rv_pdko_cv(pdk_)));
+        draw_step("stars", squid_draw_stars(rv_pdko_cv(pdk_), stars_lit()));
         draw_scene();
         draw_view();
         frame_end();
@@ -150,6 +151,16 @@ private:
     static squid_hud_round hud_round(const squid_round &round)
     {
         return squid_hud_round{ round.game.phase, round.game.beer_drunk, round.lang };
+    }
+
+    // The share of the stars the opening has lit; without a round every star is lit.
+    float stars_lit()
+    {
+        squid_round *round = nullptr;
+        if (!scene_ready_ || squid_single(world_, round) != RV_OK) {
+            return 1.0f;
+        }
+        return squid_stage_of(round->game.phase, round->game.phase_s).stars;
     }
 
     static squid_hud_debug hud_debug(const squid_round &round)
