@@ -5,7 +5,9 @@ A single-player game for the [3dmppc console](https://github.com/vydramain/3dmpp
 three elephants and a turtle. Alkoldun hits the refrigerators for beer bottles and drinks bottles worth five beer
 points to win: a marked one is worth two, a plain one one.
 
-The in-game texts (Russian, in `src/squid-texts.hpp`) are the user guide.
+The game first asks for the language, Russian or English; the in-game texts (both languages, in `src/squid-texts.hpp`)
+are the user guide. Then the opening lights the stars and grows the Earth, the calibration screen shows the Earth from
+afar, and the start flies the camera in while Alkoldun and the balls grow.
 
 ## Controls
 
@@ -13,10 +15,11 @@ Pad buttons only. The names are the pad's labels, as in the in-game hints.
 
 | Button | Phase | Action |
 | --- | --- | --- |
-| A (SOUTH) | prepare | get ready; a pad lying flat is level |
+| A (SOUTH) | language | Russian |
+| B (EAST) | language | English |
 | A (SOUTH) | ready | start the round |
 | Y (NORTH) | ready, pause, descent pause | make the current pad pose level (gyroscope only) |
-| B (EAST) | ready, pause, descent pause, landed | restart |
+| B (EAST) | ready, pause, descent pause, landed | restart: back to the calibration screen |
 | X (WEST) | any | level the D-pad keys to zero; the left stick still tilts |
 | View | play, descent | pause |
 | View | pause, descent pause | resume |
@@ -32,8 +35,9 @@ burner bakes each 24-bit WAV to PCM, and the drive streams it from the disc, so 
 
 The music follows the mood (`src/squid-music.hpp`):
 
-- menu (phases prepare and ready): `mus_intro`, looping.
-- play and pause: `mus_intro_harmonic`, `mus_intro_nasral` and `mus_intro`, in random order, each once per cycle.
+- menu (language, opening and calibration): `mus_intro`, looping.
+- the start's camera flight, play and pause: `mus_intro_harmonic`, `mus_intro_nasral` and `mus_intro`, in random
+  order, each once per cycle.
 - last bottle (at 3 points or more, one bottle can end the round): `mus_riff_full` and `mus_riff_sparce`, the same way.
 - descent and landing: `mus_interlude`, looping.
 
@@ -54,7 +58,7 @@ are drawn by the disc's 2D layer, not by the scene.
 
 ## Running
 
-The disc needs a 3dmppc console with PDK (the console's development kit) 2.3 or a later 2.x: the game uses the
+The disc needs a 3dmppc console with PDK (the console's development kit) 2.5 or a later 2.x: the game uses the
 drive's stream queue (`rv_cd_stream_queue`, `rv_cd_stream_switch`) and the pdkkit (the PDK's ECS kit)
 of that version.
 
@@ -64,12 +68,41 @@ of that version.
 
 ## Burning the disc
 
-The burner `mppcburner` comes from the console repository of the same version (PDK 2.3 or later 2.x). Build the
+The burner `mppcburner` comes from the console repository of the same version (PDK 2.5 or a later 2.x). Build the
 disc directory into a disc image:
 
 ```sh
 mppcburner build <disc-directory> -o squid-maid.mppcdisc
 ```
+
+## In a browser
+
+The same disc burns as a web page:
+
+```sh
+mppcburner build <disc-directory> -t web -o <out>
+```
+
+`<out>/index.html` holds the console with the disc inside. On a phone the page draws an on-screen gamepad, set by the
+`[touch_pad]` section of `disc.toml`: the D-pad and the face buttons A, B, X and Y, and the phone's motion passes as
+the tilt (the gyroscope). The stick, triggers, bumpers, trackpads, rear buttons and View/Menu are hidden by choice, so
+on a phone there is no pause and no debug panel (it sits on the rear buttons). On iOS the motion sensors ask for
+permission on the first touch.
+
+## Tests
+
+Host unit tests build every `tests/test-*.cpp` with C++23 against `src/` and the PDK headers; they never reach the
+disc. `PDK` is the console checkout:
+
+```sh
+PDK=<console-checkout> bash tests/run.sh
+PDK=<console-checkout> tests/check-touch-pad.sh
+python3 tests/check-budgets.py
+```
+
+`check-touch-pad.sh` burns a copy of the disc and checks that its manifest shows the D-pad, the face buttons and the
+gyroscope. `check-budgets.py` recomputes the worst frame from the assets and the source constants and compares it with
+the `[budget.*]` sections of `disc.toml`: 3072 triangles, 6144 frame primitives and 512 KiB of sound memory.
 
 ## Layout
 
@@ -78,5 +111,6 @@ disc.toml   the disc manifest: sources, assets (scenes, effects, models), stream
 src/        the game's C++ sources, burned per disc.toml
 assets/     sounds and music (snd), models, and the Earth's picture (tex, used by models/earth.gltf)
 scenes/     the game's scene: objects, camera and the round's state
+tests/      host unit tests, the touch pad check and the budget check
 docs/       the v0.1 design document
 ```
