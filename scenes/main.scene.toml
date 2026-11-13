@@ -1,119 +1,216 @@
 # The scene of the squid-maid prototype. The tilt root sits at the dome centre
-# (SQUID_DOME_CENTER in src/squid-params.hpp, -49 -3990 -242 in Q20.12) with scale 1 and no parent; the disc writes its
+# (SQUID_DOME_CENTER in src/squid-params.hpp, -0.012 -0.974 -0.059) with scale 1 and no parent; the disc writes its
 # rotation each frame, so the whole posed dome tilts with the game. Under the tilt root, pose_pitch is 0 (the structure
 # stands level, plate horizontal) and pose_yaw turns -30 deg about the plate normal, at scale 1; the pitch group stays
 # so the yaw keeps its place under it. The balls load under pose_yaw: they take the pose rotation, not the scale. The
 # structure hangs under pose_scale, which scales it 1.25 about the dome centre; the dome radius is sized for that.
 # The children are offset by minus the dome centre, so the scale turns and scales them about the dome centre.
-# Values are Q20.12 (4096 = 1.0).
+# Values are in scene units (the game's world units) and degrees; scale 1.0 is the unscaled size.
 # The three elephants stand in a row (x = -1.1, 0, 1.1; z = 0) on the turtle, whose shell is scaled 2.5 x 0.3 x 1.4
 # (its top at y = -1.85). Each foot sits 0.00 to 0.03 into the shell, none hangs over it. The feet are at y = -1.9 and
 # the model is 1.6 high, so the backs touch the plate's underside at y = -0.3. The turtle's origin is at y = -2.12.
 
 [scene]
-version = "1.1"
+version = "2.0"
 
 [[object]]
 id = "7a500001"
-name = "tilt"
 parent = ""
-kind = "group"
-position = [-49, -3990, -242]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = ""
-texture = ""
+
+[[component]]
+object = "7a500001"
+name = "name"
+text = "tilt"
+
+[[component]]
+object = "7a500001"
+name = "transform"
+position = [-0.012, -0.974, -0.059]
 
 [[object]]
 id = "7a500003"
-name = "pose_pitch"
 parent = "7a500001"
-kind = "group"
-position = [0, 0, 0]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = ""
-texture = ""
+
+[[component]]
+object = "7a500003"
+name = "name"
+text = "pose_pitch"
+
+[[component]]
+object = "7a500003"
+name = "transform"
 
 [[object]]
 id = "7a500004"
-name = "pose_yaw"
 parent = "7a500003"
-kind = "group"
-position = [0, 0, 0]
-rotation = [0, -122880, 0]
-scale = [4096, 4096, 4096]
-mesh = ""
-texture = ""
+
+[[component]]
+object = "7a500004"
+name = "name"
+text = "pose_yaw"
+
+[[component]]
+object = "7a500004"
+name = "transform"
+rotation = [0, -30, 0]
 
 [[object]]
 id = "7a500005"
-name = "pose_scale"
 parent = "7a500004"
-kind = "group"
-position = [0, 0, 0]
-rotation = [0, 0, 0]
-scale = [5120, 5120, 5120]
-mesh = ""
-texture = ""
+
+[[component]]
+object = "7a500005"
+name = "name"
+text = "pose_scale"
+
+[[component]]
+object = "7a500005"
+name = "transform"
+scale = [1.25, 1.25, 1.25]
 
 [[object]]
 id = "7a500002"
-name = "earth"
 parent = "7a500005"
-kind = "mesh"
-position = [49, 3990, 242]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = "earth.gltf"
-texture = ""
 
-# The plate is drawn in the decal window, nearer than the models under it: it covers the elephants and the part of
-# the turtle under it, whose near faces would otherwise win the depth sort over the plate's large top triangles.
+[[component]]
+object = "7a500002"
+name = "name"
+text = "earth"
+
+[[component]]
+object = "7a500002"
+name = "transform"
+position = [0.012, 0.974, 0.059]
+
+[[component]]
+object = "7a500002"
+name = "model"
+source = "earth.gltf"
+
 [[component]]
 object = "7a500002"
 name = "decal"
 
 [[object]]
 id = "7a500021"
-name = "elephant_0"
 parent = "7a500005"
-kind = "mesh"
-position = [-4457, -3792, 242]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = "elephant.gltf"
-texture = ""
+
+[[component]]
+object = "7a500021"
+name = "name"
+text = "elephant_0"
+
+[[component]]
+object = "7a500021"
+name = "transform"
+position = [-1.0881, -0.9258, 0.059]
+
+[[component]]
+object = "7a500021"
+name = "model"
+source = "elephant.gltf"
 
 [[object]]
 id = "7a500022"
-name = "elephant_1"
 parent = "7a500005"
-kind = "mesh"
-position = [49, -3792, 242]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = "elephant.gltf"
-texture = ""
+
+[[component]]
+object = "7a500022"
+name = "name"
+text = "elephant_1"
+
+[[component]]
+object = "7a500022"
+name = "transform"
+position = [0.012, -0.9258, 0.059]
+
+[[component]]
+object = "7a500022"
+name = "model"
+source = "elephant.gltf"
 
 [[object]]
 id = "7a500023"
-name = "elephant_2"
 parent = "7a500005"
-kind = "mesh"
-position = [4555, -3792, 242]
-rotation = [0, 0, 0]
-scale = [4096, 4096, 4096]
-mesh = "elephant.gltf"
-texture = ""
+
+[[component]]
+object = "7a500023"
+name = "name"
+text = "elephant_2"
+
+[[component]]
+object = "7a500023"
+name = "transform"
+position = [1.112, -0.9258, 0.059]
+
+[[component]]
+object = "7a500023"
+name = "model"
+source = "elephant.gltf"
 
 [[object]]
 id = "7a500030"
-name = "turtle"
 parent = "7a500005"
-kind = "mesh"
-position = [49, -4699, 242]
-rotation = [0, 0, 0]
-scale = [10240, 1229, 5734]
-mesh = "turtle.gltf"
-texture = ""
+
+[[component]]
+object = "7a500030"
+name = "name"
+text = "turtle"
+
+[[component]]
+object = "7a500030"
+name = "transform"
+position = [0.012, -1.1472, 0.059]
+scale = [2.5, 0.3, 1.4]
+
+[[component]]
+object = "7a500030"
+name = "model"
+source = "turtle.gltf"
+
+[[object]]
+id = "7a500040"
+parent = ""
+
+[[component]]
+object = "7a500040"
+name = "name"
+text = "camera"
+
+[[component]]
+object = "7a500040"
+name = "transform"
+position = [6.493, 7.8457, 11.4568]
+rotation = [25, -150, 0]
+
+[[component]]
+object = "7a500040"
+name = "lens"
+fov = 30
+near_plane = 8
+far_plane = 40
+
+[[object]]
+id = "7a500050"
+parent = ""
+
+[[component]]
+object = "7a500050"
+name = "name"
+text = "round"
+
+[[component]]
+object = "7a500050"
+name = "squid_round"
+
+[[component]]
+object = "7a500050"
+name = "squid_view"
+
+[[component]]
+object = "7a500050"
+name = "squid_effects"
+
+[[component]]
+object = "7a500050"
+name = "squid_music"

@@ -9,7 +9,6 @@
 #include <numbers>
 #include <random>
 
-#include "squid-beer.hpp"
 #include "squid-body.hpp"
 #include "squid-input.hpp"
 #include "squid-params.hpp"
@@ -74,13 +73,34 @@ inline squid_flat squid_gravity(squid_tilt tilt)
     return squid_flat{ -SQUID_GRAVITY * std::sin(tz) * std::cos(tx), SQUID_GRAVITY * std::sin(tx) };
 }
 
+// cos/sin of the constant turn of squid_gravity_disc, computed once.
+inline const float SQUID_POSE_YAW_COS = std::cos(-SQUID_POSE_YAW_DEG * SQUID_DEG_TO_RAD);
+inline const float SQUID_POSE_YAW_SIN = std::sin(-SQUID_POSE_YAW_DEG * SQUID_DEG_TO_RAD);
+
 // squid_gravity in the disc's axes: pose_yaw turns the bodies about the plate normal under the tilt root, so the disc's
 // x and z are the root's turned by -SQUID_POSE_YAW_DEG (the inverse of that yaw). Without it the balls roll off the slope.
 inline squid_flat squid_gravity_disc(squid_tilt tilt)
 {
     const squid_flat g = squid_gravity(tilt);
-    const float a = -SQUID_POSE_YAW_DEG * SQUID_DEG_TO_RAD;
-    return squid_flat{ std::cos(a) * g.x + std::sin(a) * g.z, -std::sin(a) * g.x + std::cos(a) * g.z };
+    return squid_flat{ SQUID_POSE_YAW_COS * g.x + SQUID_POSE_YAW_SIN * g.z,
+        -SQUID_POSE_YAW_SIN * g.x + SQUID_POSE_YAW_COS * g.z };
+}
+
+// Decays of one substep of h seconds, the same for every body: taken once per substep, not per body.
+struct squid_step_consts {
+    float drift_decay = 0;
+    float drift_kick_unit = 0;
+    float damping = 0;
+    float spin_decay = 0;
+};
+
+inline squid_step_consts squid_step_consts_for(float h)
+{
+    const float decay = std::exp(-h / SQUID_DRIFT_TAU_S);
+    return squid_step_consts{ decay,
+        std::sqrt(1.0f - decay * decay),
+        std::exp(-SQUID_DAMPING_PER_S * h),
+        std::exp(-h / SQUID_SPIN_DECAY_S) };
 }
 
 // Radius of a body whose size squid_substep checked in the same substep; call it only after that check. Masses stay in
@@ -90,6 +110,31 @@ inline float squid_radius_checked(const squid_body &b)
     float radius = 0;
     squid_body_radius(b, radius);
     return radius;
+}
+
+// Above this ratio of the squared reach a pair is apart whatever the rounding: float error is far below 0.1%.
+constexpr float SQUID_PAIR_REJECT_MARGIN = 1.001f;
+
+// True iff the centres are closer than reach, as the sqrt test says; the pair pass rejects most pairs without a sqrt.
+inline bool squid_pair_reach(squid_flat a, squid_flat b, float reach)
+{
+    const float dx = b.x - a.x;
+    const float dz = b.z - a.z;
+    const float d2 = dx * dx + dz * dz;
+    // The squared test rounds differently from the sqrt one at contact: it only rejects pairs clearly apart, and the sqrt
+    // decides near contact, so the answer is the same bit for bit as before.
+    if (d2 >= reach * reach * SQUID_PAIR_REJECT_MARGIN) {
+        return false;
+    }
+    return std::sqrt(d2) < reach;
+}
+
+// Radius of every body in the set, taken once per substep; same precondition as squid_radius_checked.
+inline void squid_pair_radii(const squid_bodies &set, float (&radii)[SQUID_BODY_CAPACITY])
+{
+    for (int i = 0; i < set.count; ++i) {
+        radii[i] = squid_radius_checked(set.items[i]);
+    }
 }
 
 // Standard normal sample by Box-Muller; each uniform is a draw over (max + 1), so it lies in (0, 1) and the log is finite.
@@ -104,13 +149,12 @@ inline float squid_normal(std::minstd_rand &rng)
 // Exact Ornstein-Uhlenbeck step of the drift over h seconds: it relaxes to zero with time constant SQUID_DRIFT_TAU_S and
 // keeps the stationary deviation SQUID_DRIFT_SIGMA / sqrt(mass), so heavier bodies drift less. One normal sample per
 // axis, x then z; each sample takes two generator draws.
-inline void squid_drift_step(squid_body &b, float h, std::minstd_rand &rng)
+inline void squid_drift_step(squid_body &b, const squid_step_consts &k, std::minstd_rand &rng)
 {
-    const float decay = std::exp(-h / SQUID_DRIFT_TAU_S);
     const float sigma = SQUID_DRIFT_SIGMA / std::sqrt(static_cast<float>(b.mass));
-    const float kick = sigma * std::sqrt(1.0f - decay * decay);
-    b.drift.x = b.drift.x * decay + kick * squid_normal(rng);
-    b.drift.z = b.drift.z * decay + kick * squid_normal(rng);
+    const float kick = sigma * k.drift_kick_unit;
+    b.drift.x = b.drift.x * k.drift_decay + kick * squid_normal(rng);
+    b.drift.z = b.drift.z * k.drift_decay + kick * squid_normal(rng);
 }
 
 // Acceleration (tilt plus the body's drift), damping and speed cap, then the move by h seconds. The cap bounds this move
@@ -262,40 +306,31 @@ inline int squid_bottle_birth(squid_bodies &set, int from, squid_flat centre, sq
     return RV_OK;
 }
 
-// Split of the body at index i for event e. A fridge (size 4) split also gives a bottle at its centre, where the halves
-// part, marked when Alkoldun's hit split the heaviest ball of the pass (heaviest, taken at the pass start).
-inline void squid_event_split(squid_bodies &set, int i, const squid_pair_event &e, int heaviest, squid_event_counts &counts)
-{
-    const bool fridge = set.items[i].mass == SQUID_BALL_MASS_MAX;
-    const bool marked = e.alkoldun_hit && set.items[i].mass == heaviest;
-    // The split moves the parent to the lo half, so the centre and velocity are taken before it.
-    const squid_flat centre = set.items[i].pos;
-    const squid_flat vel = set.items[i].vel;
-    if (squid_split_body(set, i, e.normal) != RV_OK) {
-        return;
-    }
-    ++counts.splits;
-    if (fridge && squid_bottle_birth(set, i, centre, vel, marked) == RV_OK) {
-        ++counts.bottles_born;
-    }
-}
-
-// Split-all split of the body at index i along normal. A fridge (size 4) also gives an unmarked bottle at the centre of
-// the split, where the halves meet, with the parent's velocity; a refused bottle leaves the split standing.
-inline int squid_split_all_split(squid_bodies &set, int i, squid_flat normal)
+// Split of the body at index i along normal. A fridge (size 4) also gives a bottle at the centre of the split, where
+// the halves part, with the parent's velocity, marked or not; a refused bottle leaves the split standing.
+inline int squid_split_all_split(squid_bodies &set, int i, squid_flat normal, bool marked = false)
 {
     const bool fridge = set.items[i].mass == SQUID_BALL_MASS_MAX;
     // The split moves the parent to the lo half, so the centre and velocity are taken before it.
     const squid_flat centre = set.items[i].pos;
     const squid_flat vel = set.items[i].vel;
     const int rc = squid_split_body(set, i, normal);
-    if (rc != RV_OK) {
-        return rc;
+    if (rc == RV_OK && fridge) {
+        squid_bottle_birth(set, i, centre, vel, marked);
     }
-    if (fridge) {
-        squid_bottle_birth(set, i, centre, vel, false);
+    return rc;
+}
+
+// Split of the body at index i for event e; the bottle is marked when Alkoldun's hit split the heaviest ball of the
+// pass (heaviest, taken at the pass start).
+inline void squid_event_split(squid_bodies &set, int i, const squid_pair_event &e, int heaviest, squid_event_counts &counts)
+{
+    const bool marked = e.alkoldun_hit && set.items[i].mass == heaviest;
+    const int before = set.count;
+    if (squid_split_all_split(set, i, e.normal, marked) == RV_OK) {
+        ++counts.splits;
+        counts.bottles_born += set.count - before - 1; // a split adds one body, a bottle one more
     }
-    return RV_OK;
 }
 
 // Ball-ball contact over all pairs (O(n^2), n <= SQUID_BODY_CAPACITY). A touching pair is separated along the normal
@@ -311,6 +346,9 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
     // Two bodies per event and one event per body per pass: capacity / 2 events always fit.
     squid_pair_event events[SQUID_BODY_CAPACITY / 2]{};
     int event_count = 0;
+    // Mass and kind change only in the event pass after the loops, so the radii and the heaviest ball hold through them.
+    float radii[SQUID_BODY_CAPACITY];
+    squid_pair_radii(set, radii);
     const int heaviest = squid_heaviest_ball(set);
     for (int i = 0; i < set.count; ++i) {
         for (int j = i + 1; j < set.count; ++j) {
@@ -320,18 +358,20 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
             }
             squid_body &a = set.items[i];
             squid_body &b = set.items[j];
+            const float ra = radii[i];
+            const float rb = radii[j];
+            const float reach = ra + rb;
+            if (!squid_pair_reach(a.pos, b.pos, reach)) {
+                continue;
+            }
             const float dx = b.pos.x - a.pos.x;
             const float dz = b.pos.z - a.pos.z;
             const float dist = std::sqrt(dx * dx + dz * dz);
-            const float ra = squid_radius_checked(a);
-            const float rb = squid_radius_checked(b);
-            const float reach = ra + rb;
-            if (dist >= reach) {
-                continue;
-            }
-            // Touching Alkoldun and bottle: the bottle is drunk, with no push and no bounce on either body.
-            if (squid_is_drink(a, b)) {
-                const int bottle = a.kind == squid_kind::bottle ? i : j;
+            // Touching Alkoldun and bottle, in either order: the bottle is drunk, with no push and no bounce on either body.
+            const bool a_bottle = a.kind == squid_kind::bottle;
+            if ((a_bottle && b.kind == squid_kind::alkoldun) ||
+                (a.kind == squid_kind::alkoldun && b.kind == squid_kind::bottle)) {
+                const int bottle = a_bottle ? i : j;
                 removed[bottle] = true;
                 ++counts.bottles_drunk;
                 counts.marked_drunk += set.items[bottle].marked ? 1 : 0;
@@ -417,7 +457,7 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
 
 // Display spin and hover over h seconds: rot turns by spin * h (exact axis-angle step, renormalised), the spin decays
 // with SQUID_SPIN_DECAY_S, and the hover phase advances by 2 pi h / period. Motion never reads these.
-inline void squid_motion_step(squid_body &b, float h)
+inline void squid_motion_step(squid_body &b, float h, const squid_step_consts &k)
 {
     const float rate = std::sqrt(b.spin.x * b.spin.x + b.spin.y * b.spin.y + b.spin.z * b.spin.z);
     const float angle = rate * h;
@@ -427,10 +467,9 @@ inline void squid_motion_step(squid_body &b, float h)
     const rv_pdklib::rv_vec4 turned = squid_quat_mul(turn, b.rot);
     const float norm = std::sqrt(turned.x * turned.x + turned.y * turned.y + turned.z * turned.z + turned.w * turned.w);
     b.rot = rv_pdklib::rv_vec4{ turned.x / norm, turned.y / norm, turned.z / norm, turned.w / norm };
-    const float decay = std::exp(-h / SQUID_SPIN_DECAY_S);
-    b.spin.x *= decay;
-    b.spin.y *= decay;
-    b.spin.z *= decay;
+    b.spin.x *= k.spin_decay;
+    b.spin.y *= k.spin_decay;
+    b.spin.z *= k.spin_decay;
     const float full_turn = 2.0f * std::numbers::pi_v<float>;
     b.hover_phase = std::fmod(b.hover_phase + full_turn * h / b.hover_period, full_turn);
 }
@@ -452,15 +491,15 @@ inline int squid_substep(squid_bodies &set, squid_flat accel, float h, squid_eve
             return RV_ERR_INVAL;
         }
     }
-    const float damping = std::exp(-SQUID_DAMPING_PER_S * h);
+    const squid_step_consts k = squid_step_consts_for(h);
     for (int i = 0; i < set.count; ++i) {
-        squid_drift_step(set.items[i], h, rng);
-        squid_body_move(set.items[i], accel, h, damping);
+        squid_drift_step(set.items[i], k, rng);
+        squid_body_move(set.items[i], accel, h, k.damping);
     }
     squid_pair_step(set, counts);
     for (int i = 0; i < set.count; ++i) {
         squid_edge_step(set.items[i]);
-        squid_motion_step(set.items[i], h);
+        squid_motion_step(set.items[i], h, k);
     }
     return RV_OK;
 }

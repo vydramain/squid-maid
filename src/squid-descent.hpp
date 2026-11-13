@@ -66,20 +66,15 @@ inline float squid_descent_progress(const squid_descent &d)
 // flight reads as an arc and not as a slide down the chord.
 constexpr float SQUID_DESCENT_ARC_HEIGHT = 1.0f;
 
-// Top centre of the Earth plate relative to the dome centre. The Earth mesh (assets/models/earth.gltf) is centred on its
-// origin in x and z with its top face at y = 0; the scene places its origin at minus the dome centre under pose_scale.
-inline rv_pdklib::rv_vec3 squid_descent_plate_top()
-{
-    const float s = SQUID_STRUCTURE_SCALE;
-    return rv_pdklib::rv_vec3{ -s * SQUID_DOME_CENTER_X, -s * SQUID_DOME_CENTER_Y, -s * SQUID_DOME_CENTER_Z };
-}
-
-// Alkoldun's centre when he stands on the plate: the plate top lifted by his radius, so he rests on it and not in it.
+// Alkoldun's centre when he stands on the plate, relative to the dome centre: the plate top lifted by his radius, so he
+// rests on it and not in it. The Earth mesh (assets/models/earth.gltf) is centred on its origin in x and z with its top
+// face at y = 0; the scene places its origin at minus the dome centre under pose_scale.
 inline rv_pdklib::rv_vec3 squid_descent_end()
 {
-    const rv_pdklib::rv_vec3 top = squid_descent_plate_top();
-    const float radius = SQUID_BALL_RADIUS[SQUID_ALKOLDUN_SIZE - 1];
-    return rv_pdklib::rv_vec3{ top.x, top.y + radius, top.z };
+    const float s = SQUID_STRUCTURE_SCALE;
+    return rv_pdklib::rv_vec3{ -s * SQUID_DOME_CENTER_X,
+        -s * SQUID_DOME_CENTER_Y + SQUID_BALL_RADIUS[SQUID_ALKOLDUN_SIZE - 1],
+        -s * SQUID_DOME_CENTER_Z };
 }
 
 // Point of the flight at the current progress: the chord from start to end, bulged up by the arc. Progress 0 is the

@@ -1,0 +1,84 @@
+# Linux-Kernel-Inspired Readable C++ Style.
+# Philosophy: clang-format owns indentation, braces and spacing. It also breaks argument
+# and parameter lists one per line when they do not fit in 128 columns.
+---
+Language: Cpp
+Standard: Latest
+
+# --- Base: tabs, 4 wide ---
+# Never: indentation is tabs, alignment (trailing comments, macros) is spaces, so
+# columns do not drift apart under a different tab width.
+UseTab: Never
+IndentWidth: 4
+TabWidth: 4
+ContinuationIndentWidth: 4
+
+# Lines are limited to 128 columns (the project convention). When a call or
+# declaration does not fit, every argument/parameter goes on its own line.
+ColumnLimit: 128
+
+# --- Braces: Linux style (a break for functions only); {} always required ---
+BreakBeforeBraces: Linux
+InsertBraces: true
+
+# --- Continuation lines: a fixed single tab, no visual alignment ---
+AlignAfterOpenBracket: DontAlign
+AlignOperands: DontAlign
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: false
+# Break argument and parameter lists one per line.
+BinPackArguments: false
+BinPackParameters: OnePerLine
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+# Long braced data lists, 20+ items, stay packed.
+BinPackLongBracedList: true
+
+# --- No one-line "squeezing" ---
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: false
+AllowShortLambdasOnASingleLine: Empty
+
+# --- Pointers and case labels as in the kernel ---
+PointerAlignment: Right
+IndentCaseLabels: false
+
+# --- C++ specifics ---
+NamespaceIndentation: None
+FixNamespaceComments: true
+AccessModifierOffset: -4
+BreakTemplateDeclarations: Yes
+PackConstructorInitializers: Never
+BreakConstructorInitializers: BeforeComma
+Cpp11BracedListStyle: false
+SpaceAfterTemplateKeyword: true
+
+# --- Everything else ---
+AlignEscapedNewlines: Left
+# Trailing comments line up into a column within a run of consecutive lines; a
+# blank line breaks the group (OverEmptyLines: 0).
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+AlignConsecutiveMacros: Consecutive
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+SortIncludes: Never
+ReflowComments: true
+SpaceBeforeParens: ControlStatementsExceptControlMacros
+IndentPPDirectives: None
+
+# The logging macros are statement-like calls; let them be formatted as statements.
+StatementMacros:
+  - RV_MPPC_DISC_ENTRY_DEF
+---
+# JS files of the web build (src/web) use the C++ indentation and line width.
+Language: JavaScript
+BasedOnStyle: LLVM
+IndentWidth: 4
+UseTab: Never
+ColumnLimit: 128
