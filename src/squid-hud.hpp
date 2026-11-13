@@ -32,8 +32,6 @@ constexpr int SQUID_HUD_LINE_GAP_PX = 2;
 // Text stops this far short of each screen edge; a line wider than that wraps at spaces. The backdrop pads the text by
 // this much on each side.
 constexpr int SQUID_HUD_MARGIN_PX = 4;
-// Blank lines between the screen and the debug panel.
-constexpr int SQUID_HUD_PANEL_GAP_LINES = 1;
 // Backdrop colour: near-black and opaque. The console has no blending yet (pdk/README.md), so a see-through panel is out.
 constexpr rv_color SQUID_HUD_BACKDROP_COLOUR = { 8, 9, 14 };
 
@@ -107,12 +105,6 @@ inline std::string_view squid_hud_screen(const squid_texts &texts, squid_phase p
 inline int squid_hud_line_step(rv_pdklib::rv_font_style style)
 {
     return rv_pdklib::rv_font_line_height(style.scale) + SQUID_HUD_LINE_GAP_PX;
-}
-
-// The first refusal of two, or RV_OK: every part is drawn and the first code is kept for the caller.
-inline int squid_hud_first(int first, int next)
-{
-    return first != RV_OK ? first : next;
 }
 
 // Puts one line at (x, y) in the overlay. A refused put returns its code; the caller logs it.
@@ -302,8 +294,8 @@ inline int squid_hud_draw(rv_cv *cv,
     std::vector<int> panel_widths;
     if (show_debug) {
         panel = cache.lines;
-        for (int i = 0; i < SQUID_HUD_PANEL_GAP_LINES && !panel.empty(); ++i) {
-            panel.emplace_back();
+        if (!panel.empty()) {
+            panel.emplace_back(); // a blank line between the screen and the panel
         }
         squid_hud_debug_panel_lines(style, max_px, round, debug, panel);
         for (const std::string &line : panel) {
@@ -323,13 +315,11 @@ inline int squid_hud_draw(rv_cv *cv,
     int first_code = squid_hud_backdrop_put(cv, widest, static_cast<int>(width), static_cast<int>(height), y);
     for (std::size_t i = 0; i < lines.size(); ++i) {
         const int x = (static_cast<int>(width) - widths[i]) / 2;
-        first_code = squid_hud_first(first_code, squid_hud_put(cv, style, x, y, lines[i]));
+        const int put_code = squid_hud_put(cv, style, x, y, lines[i]);
+        first_code = first_code != RV_OK ? first_code : put_code; // every line is drawn, the first refusal is kept
         y += step;
     }
-    if (first_code != RV_OK) {
-        return first_code;
-    }
-    return RV_OK;
+    return first_code;
 }
 
 } // namespace squid

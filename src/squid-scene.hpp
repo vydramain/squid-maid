@@ -80,49 +80,34 @@ inline int squid_scene_find(rv_pdkkit::ecs_world &world, uint32_t load_number, c
     return RV_ERR_NOENT;
 }
 
-// Rounds a world point to Q20.12; out is written only when all three coordinates fit.
-inline int squid_scene_fx_point(rv_pdklib::rv_vec3 point, rv_pdklib::fx_vec3 &out)
+// Rounds a vector to Q20.12; out is written only when all three coordinates fit. kept names what stays unset on a refusal.
+inline int squid_scene_fx_point(rv_pdklib::rv_vec3 point, rv_pdklib::fx_vec3 &out, const char *kept = "position")
 {
     rv_pdklib::fx_vec3 fixed{};
-    const int x_code = rv_pdklib::fx_from_double(point.x, fixed.x);
-    if (x_code != RV_OK) {
-        RV_LOG_ERR(SQUID_SCENE_TAG, "x {} is outside the Q20.12 range; position not set", point.x);
-        return x_code;
+    const auto axis = [kept](char name, float value, rv_pdklib::fx &dst) {
+        const int code = rv_pdklib::fx_from_double(value, dst);
+        if (code != RV_OK) {
+            RV_LOG_ERR(SQUID_SCENE_TAG, "{} {} is outside the Q20.12 range; {} not set", name, value, kept);
+        }
+        return code;
+    };
+    int code = axis('x', point.x, fixed.x);
+    code = code != RV_OK ? code : axis('y', point.y, fixed.y);
+    code = code != RV_OK ? code : axis('z', point.z, fixed.z);
+    if (code == RV_OK) {
+        out = fixed;
     }
-    const int y_code = rv_pdklib::fx_from_double(point.y, fixed.y);
-    if (y_code != RV_OK) {
-        RV_LOG_ERR(SQUID_SCENE_TAG, "y {} is outside the Q20.12 range; position not set", point.y);
-        return y_code;
-    }
-    const int z_code = rv_pdklib::fx_from_double(point.z, fixed.z);
-    if (z_code != RV_OK) {
-        RV_LOG_ERR(SQUID_SCENE_TAG, "z {} is outside the Q20.12 range; position not set", point.z);
-        return z_code;
-    }
-    out = fixed;
-    return RV_OK;
+    return code;
 }
 
 // Game tilt angles in degrees to the tilt root's Q20.12 rotation (x, 0, z), scaled by SQUID_VISIBLE_TILT_SHARE: the
 // world on screen tilts by a share of the game tilt. The physics keeps the full game tilt; rotation is untouched on error.
 inline int squid_scene_tilt(float tilt_x_deg, float tilt_z_deg, rv_pdklib::fx_vec3 &rotation)
 {
-    const float shown_x_deg = tilt_x_deg * SQUID_VISIBLE_TILT_SHARE;
-    const float shown_z_deg = tilt_z_deg * SQUID_VISIBLE_TILT_SHARE;
-    rv_pdklib::fx tilt_x{};
-    rv_pdklib::fx tilt_z{};
-    const int x_code = rv_pdklib::fx_from_double(shown_x_deg, tilt_x);
-    if (x_code != RV_OK) {
-        RV_LOG_ERR(SQUID_SCENE_TAG, "shown tilt x {} deg is outside the Q20.12 range; rotation kept", shown_x_deg);
-        return x_code;
-    }
-    const int z_code = rv_pdklib::fx_from_double(shown_z_deg, tilt_z);
-    if (z_code != RV_OK) {
-        RV_LOG_ERR(SQUID_SCENE_TAG, "shown tilt z {} deg is outside the Q20.12 range; rotation kept", shown_z_deg);
-        return z_code;
-    }
-    rotation = rv_pdklib::fx_vec3{ tilt_x, 0, tilt_z };
-    return RV_OK;
+    return squid_scene_fx_point(
+        rv_pdklib::rv_vec3{ tilt_x_deg * SQUID_VISIBLE_TILT_SHARE, 0, tilt_z_deg * SQUID_VISIBLE_TILT_SHARE },
+        rotation,
+        "rotation");
 }
 
 // Finds the tilt root and checks it: at the dome centre with scale 1 and no parent. Any refusal is returned with its
@@ -158,91 +143,67 @@ inline int squid_scene_check(rv_pdkkit::ecs_world &world, uint32_t load_number, 
     return RV_OK;
 }
 
-// Finds the pose_scale group and the Earth and checks them against the dome: the group scales by SQUID_STRUCTURE_SCALE,
-// and the Earth sits at minus the dome centre, which is where squid_descent_plate_top takes the plate from. Any refusal
-// is returned with its cause logged.
+// The transform of the named object of the load; a missing object or transform is refused with its cause logged.
+inline int squid_scene_transform_of(rv_pdkkit::ecs_world &world,
+    uint32_t load_number,
+    const char *name,
+    const rv_pdkkit::ecs_component_transform *&out)
+{
+    rv_pdkkit::ecs_id id{};
+    const int find_code = squid_scene_find(world, load_number, name, id);
+    if (find_code != RV_OK) {
+        return find_code;
+    }
+    out = rv_pdkkit::ecs_component_get<rv_pdkkit::ecs_component_transform>(world, id);
+    if (out == nullptr) {
+        RV_LOG_ERR(SQUID_SCENE_TAG, "'{}' object has no transform", name);
+        return RV_ERR_NOENT;
+    }
+    return RV_OK;
+}
+
+// Finds the pose groups and the Earth and checks them against the dome: the group scales by SQUID_STRUCTURE_SCALE, the Earth
+// sits at minus the dome centre (where squid_descent_end takes the plate from), pose_pitch does not rotate and pose_yaw
+// turns SQUID_POSE_YAW_DEG about y. Any refusal is returned with its cause logged.
 inline int squid_scene_check_structure(rv_pdkkit::ecs_world &world, uint32_t load_number)
 {
-    rv_pdkkit::ecs_id scale_id{};
-    const int scale_code = squid_scene_find(world, load_number, SQUID_SCENE_POSE_SCALE_NAME, scale_id);
-    if (scale_code != RV_OK) {
-        return scale_code;
-    }
-    rv_pdkkit::ecs_id earth_id{};
-    const int earth_code = squid_scene_find(world, load_number, SQUID_SCENE_EARTH_NAME, earth_id);
-    if (earth_code != RV_OK) {
-        return earth_code;
-    }
-    const rv_pdkkit::ecs_component_transform *scale_group =
-        rv_pdkkit::ecs_component_get<rv_pdkkit::ecs_component_transform>(world, scale_id);
-    const rv_pdkkit::ecs_component_transform *earth =
-        rv_pdkkit::ecs_component_get<rv_pdkkit::ecs_component_transform>(world, earth_id);
-    if (scale_group == nullptr || earth == nullptr) {
-        RV_LOG_ERR(SQUID_SCENE_TAG,
-            "'{}' or '{}' object has no transform",
-            SQUID_SCENE_POSE_SCALE_NAME,
-            SQUID_SCENE_EARTH_NAME);
-        return RV_ERR_NOENT;
-    }
     const float s = SQUID_STRUCTURE_SCALE;
-    rv_pdklib::fx_vec3 want_scale{};
-    const int want_scale_code = squid_scene_fx_point(rv_pdklib::rv_vec3{ s, s, s }, want_scale);
-    if (want_scale_code != RV_OK) {
-        return want_scale_code;
-    }
-    rv_pdklib::fx_vec3 want_earth{};
-    const int want_earth_code =
-        squid_scene_fx_point(rv_pdklib::rv_vec3{ -SQUID_DOME_CENTER_X, -SQUID_DOME_CENTER_Y, -SQUID_DOME_CENTER_Z },
-            want_earth);
-    if (want_earth_code != RV_OK) {
-        return want_earth_code;
-    }
-    const bool scaled =
-        scale_group->scale.x == want_scale.x && scale_group->scale.y == want_scale.y && scale_group->scale.z == want_scale.z;
-    const bool placed =
-        earth->position.x == want_earth.x && earth->position.y == want_earth.y && earth->position.z == want_earth.z;
-    if (!scaled || !placed) {
-        RV_LOG_ERR(SQUID_SCENE_TAG,
-            "scene refused: pose_scale must scale the structure by {} and the Earth must sit at minus the dome centre",
-            SQUID_STRUCTURE_SCALE);
-        return RV_ERR_INVAL;
-    }
-    rv_pdkkit::ecs_id pitch_id{};
-    const int pitch_code = squid_scene_find(world, load_number, SQUID_SCENE_POSE_PITCH_NAME, pitch_id);
-    if (pitch_code != RV_OK) {
-        return pitch_code;
-    }
-    rv_pdkkit::ecs_id yaw_id{};
-    const int yaw_code = squid_scene_find(world, load_number, SQUID_SCENE_POSE_YAW_NAME, yaw_id);
-    if (yaw_code != RV_OK) {
-        return yaw_code;
-    }
-    const rv_pdkkit::ecs_component_transform *pitch =
-        rv_pdkkit::ecs_component_get<rv_pdkkit::ecs_component_transform>(world, pitch_id);
-    const rv_pdkkit::ecs_component_transform *yaw =
-        rv_pdkkit::ecs_component_get<rv_pdkkit::ecs_component_transform>(world, yaw_id);
-    if (pitch == nullptr || yaw == nullptr) {
-        RV_LOG_ERR(SQUID_SCENE_TAG,
-            "'{}' or '{}' object has no transform",
-            SQUID_SCENE_POSE_PITCH_NAME,
-            SQUID_SCENE_POSE_YAW_NAME);
-        return RV_ERR_NOENT;
-    }
-    const rv_pdklib::fx_vec3 level{};
-    rv_pdklib::fx_vec3 want_turn{};
-    const int want_turn_code = squid_scene_fx_point(rv_pdklib::rv_vec3{ 0, SQUID_POSE_YAW_DEG, 0 }, want_turn);
-    if (want_turn_code != RV_OK) {
-        return want_turn_code;
-    }
-    const bool pitch_level = pitch->rotation.x == level.x && pitch->rotation.y == level.y && pitch->rotation.z == level.z;
-    const bool yaw_turned = yaw->rotation.x == want_turn.x && yaw->rotation.y == want_turn.y && yaw->rotation.z == want_turn.z;
-    if (!pitch_level || !yaw_turned) {
-        RV_LOG_ERR(SQUID_SCENE_TAG,
-            "scene refused: '{}' must not rotate and '{}' must turn {} deg about y; the physics assumes it",
-            SQUID_SCENE_POSE_PITCH_NAME,
-            SQUID_SCENE_POSE_YAW_NAME,
-            SQUID_POSE_YAW_DEG);
-        return RV_ERR_INVAL;
+    // The object, the transform field that is checked, the value it must hold and what a refusal says about it.
+    struct squid_scene_want {
+        const char *name;
+        rv_pdklib::fx_vec3 rv_pdkkit::ecs_component_transform::*field;
+        rv_pdklib::rv_vec3 value;
+        const char *why;
+    };
+    using transform = rv_pdkkit::ecs_component_transform;
+    const squid_scene_want wants[] = {
+        { SQUID_SCENE_POSE_SCALE_NAME, &transform::scale, { s, s, s }, "must scale the structure by SQUID_STRUCTURE_SCALE" },
+        { SQUID_SCENE_EARTH_NAME,
+            &transform::position,
+            { -SQUID_DOME_CENTER_X, -SQUID_DOME_CENTER_Y, -SQUID_DOME_CENTER_Z },
+            "must sit at minus the dome centre" },
+        { SQUID_SCENE_POSE_PITCH_NAME, &transform::rotation, { 0, 0, 0 }, "must not rotate" },
+        { SQUID_SCENE_POSE_YAW_NAME,
+            &transform::rotation,
+            { 0, SQUID_POSE_YAW_DEG, 0 },
+            "must turn SQUID_POSE_YAW_DEG about y" },
+    };
+    for (const squid_scene_want &want : wants) {
+        const transform *object = nullptr;
+        const int object_code = squid_scene_transform_of(world, load_number, want.name, object);
+        if (object_code != RV_OK) {
+            return object_code;
+        }
+        rv_pdklib::fx_vec3 fixed{};
+        const int fixed_code = squid_scene_fx_point(want.value, fixed);
+        if (fixed_code != RV_OK) {
+            return fixed_code;
+        }
+        const rv_pdklib::fx_vec3 &have = object->*want.field;
+        if (have.x != fixed.x || have.y != fixed.y || have.z != fixed.z) {
+            RV_LOG_ERR(SQUID_SCENE_TAG, "scene refused: '{}' {}; the physics assumes it", want.name, want.why);
+            return RV_ERR_INVAL;
+        }
     }
     return RV_OK;
 }

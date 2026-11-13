@@ -9,7 +9,6 @@
 #include <numbers>
 #include <random>
 
-#include "squid-beer.hpp"
 #include "squid-body.hpp"
 #include "squid-input.hpp"
 #include "squid-params.hpp"
@@ -368,9 +367,11 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
             const float dx = b.pos.x - a.pos.x;
             const float dz = b.pos.z - a.pos.z;
             const float dist = std::sqrt(dx * dx + dz * dz);
-            // Touching Alkoldun and bottle: the bottle is drunk, with no push and no bounce on either body.
-            if (squid_is_drink(a, b)) {
-                const int bottle = a.kind == squid_kind::bottle ? i : j;
+            // Touching Alkoldun and bottle, in either order: the bottle is drunk, with no push and no bounce on either body.
+            const bool a_bottle = a.kind == squid_kind::bottle;
+            if ((a_bottle && b.kind == squid_kind::alkoldun) ||
+                (a.kind == squid_kind::alkoldun && b.kind == squid_kind::bottle)) {
+                const int bottle = a_bottle ? i : j;
                 removed[bottle] = true;
                 ++counts.bottles_drunk;
                 counts.marked_drunk += set.items[bottle].marked ? 1 : 0;

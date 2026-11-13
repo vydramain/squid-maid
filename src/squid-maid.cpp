@@ -147,12 +147,6 @@ private:
         }
     }
 
-    // The HUD's view of the round: the phase, the beer counter and the language.
-    static squid_hud_round hud_round(const squid_round &round)
-    {
-        return squid_hud_round{ round.game.phase, round.game.beer_drunk, round.lang };
-    }
-
     // The share of the stars the opening has lit; without a round every star is lit.
     float stars_lit()
     {
@@ -161,16 +155,6 @@ private:
             return 1.0f;
         }
         return squid_stage_of(round->game.phase, round->game.phase_s).stars;
-    }
-
-    static squid_hud_debug hud_debug(const squid_round &round)
-    {
-        return squid_hud_debug{ round.target_tilt,
-            round.game.input.smoothed,
-            round.sensor,
-            squid_census_of(round.game.bodies),
-            round.game.round_splits,
-            round.game.round_absorbs };
     }
 
     // The scene's models, drawn by the kit's frame, which also sets the scene's camera. world_frame runs the systems first.
@@ -188,9 +172,19 @@ private:
         squid_round *round = nullptr;
         if (font_ready_ && squid_single(world_, round) == RV_OK) {
             rv_cv *cv = rv_pdko_cv(pdk_);
+            const squid_game &game = round->game;
             // The panel's numbers are gathered only while it is open.
-            const squid_hud_debug debug = round->debug_panel ? hud_debug(*round) : squid_hud_debug{};
-            draw_step("hud", squid_hud_draw(cv, font_style(), hud_cache_, hud_round(*round), debug, round->debug_panel));
+            squid_hud_debug debug{};
+            if (round->debug_panel) {
+                debug = squid_hud_debug{ round->target_tilt,
+                    game.input.smoothed,
+                    round->sensor,
+                    squid_census_of(game.bodies),
+                    game.round_splits,
+                    game.round_absorbs };
+            }
+            const squid_hud_round hud{ game.phase, game.beer_drunk, round->lang };
+            draw_step("hud", squid_hud_draw(cv, font_style(), hud_cache_, hud, debug, round->debug_panel));
         }
     }
 

@@ -69,14 +69,6 @@ inline constexpr const char *SQUID_VIEW_BOTTLE_MODEL = "bottle.mppcmod";
 // Model file of a marked bottle: saturated violet, so it reads apart from a plain bottle on the dome.
 inline constexpr const char *SQUID_VIEW_BOTTLE_MARKED_MODEL = "bottle_marked.mppcmod";
 
-// Bottle model indexed by body.marked: plain at 0, marked at 1.
-inline constexpr const char *SQUID_VIEW_BOTTLE_MODELS[] = { SQUID_VIEW_BOTTLE_MODEL, SQUID_VIEW_BOTTLE_MARKED_MODEL };
-static_assert(std::size(SQUID_VIEW_BOTTLE_MODELS) == static_cast<std::size_t>(true) + 1);
-
-// Fixed model by kind, indexed by squid_kind; nullptr means the bottle or ball table decides.
-inline constexpr const char *SQUID_VIEW_KIND_MODELS[] = { nullptr, SQUID_VIEW_ALKOLDUN_MODEL, nullptr };
-static_assert(std::size(SQUID_VIEW_KIND_MODELS) == static_cast<std::size_t>(squid_kind::bottle) + 1);
-
 // Alkoldun with a flame under him, the same figure as the plain model; the flight shows him with it.
 inline constexpr const char *SQUID_VIEW_FLAME_MODEL = "alkoldun_flame.mppcmod";
 
@@ -106,24 +98,23 @@ inline const squid_view_flight_row *squid_view_flight_row_of(squid_phase phase)
 // non-null radius also gets the body's radius, taken from the size this already looks up.
 inline int squid_view_model(const squid_body &body, const char *&model, float *radius = nullptr)
 {
-    const std::size_t kind = static_cast<std::size_t>(body.kind);
-    if (kind >= std::size(SQUID_VIEW_KIND_MODELS)) {
-        RV_LOG_ERR(SQUID_VIEW_TAG, "body model refused: kind {} is unknown", kind);
-        return RV_ERR_INVAL;
-    }
-    if (SQUID_VIEW_KIND_MODELS[kind] != nullptr) {
+    if (body.kind == squid_kind::alkoldun) {
         if (radius != nullptr && squid_body_radius(body, *radius) != RV_OK) {
             return RV_ERR_INVAL;
         }
-        model = SQUID_VIEW_KIND_MODELS[kind];
+        model = SQUID_VIEW_ALKOLDUN_MODEL;
         return RV_OK;
     }
     if (body.kind == squid_kind::bottle) {
         if (radius != nullptr) {
             *radius = SQUID_BOTTLE_RADIUS;
         }
-        model = SQUID_VIEW_BOTTLE_MODELS[static_cast<std::size_t>(body.marked)];
+        model = body.marked ? SQUID_VIEW_BOTTLE_MARKED_MODEL : SQUID_VIEW_BOTTLE_MODEL;
         return RV_OK;
+    }
+    if (body.kind != squid_kind::ball) {
+        RV_LOG_ERR(SQUID_VIEW_TAG, "body model refused: kind {} is unknown", static_cast<std::size_t>(body.kind));
+        return RV_ERR_INVAL;
     }
     int size = 0;
     if (squid_body_size(body, size) != RV_OK) {
