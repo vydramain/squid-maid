@@ -92,6 +92,31 @@ inline float squid_radius_checked(const squid_body &b)
     return radius;
 }
 
+// Above this ratio of the squared reach a pair is apart whatever the rounding: float error is far below 0.1%.
+constexpr float SQUID_PAIR_REJECT_MARGIN = 1.001f;
+
+// True iff the centres are closer than reach, as the sqrt test says; the pair pass rejects most pairs without a sqrt.
+inline bool squid_pair_reach(squid_flat a, squid_flat b, float reach)
+{
+    const float dx = b.x - a.x;
+    const float dz = b.z - a.z;
+    const float d2 = dx * dx + dz * dz;
+    // The squared test rounds differently from the sqrt one at contact: it only rejects pairs clearly apart, and the sqrt
+    // decides near contact, so the answer is the same bit for bit as before.
+    if (d2 >= reach * reach * SQUID_PAIR_REJECT_MARGIN) {
+        return false;
+    }
+    return std::sqrt(d2) < reach;
+}
+
+// Radius of every body in the set, taken once per substep; same precondition as squid_radius_checked.
+inline void squid_pair_radii(const squid_bodies &set, float (&radii)[SQUID_BODY_CAPACITY])
+{
+    for (int i = 0; i < set.count; ++i) {
+        radii[i] = squid_radius_checked(set.items[i]);
+    }
+}
+
 // Standard normal sample by Box-Muller; each uniform is a draw over (max + 1), so it lies in (0, 1) and the log is finite.
 inline float squid_normal(std::minstd_rand &rng)
 {
@@ -311,6 +336,9 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
     // Two bodies per event and one event per body per pass: capacity / 2 events always fit.
     squid_pair_event events[SQUID_BODY_CAPACITY / 2]{};
     int event_count = 0;
+    // Mass and kind change only in the event pass after the loops, so the radii and the heaviest ball hold through them.
+    float radii[SQUID_BODY_CAPACITY];
+    squid_pair_radii(set, radii);
     const int heaviest = squid_heaviest_ball(set);
     for (int i = 0; i < set.count; ++i) {
         for (int j = i + 1; j < set.count; ++j) {
@@ -320,15 +348,15 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
             }
             squid_body &a = set.items[i];
             squid_body &b = set.items[j];
+            const float ra = radii[i];
+            const float rb = radii[j];
+            const float reach = ra + rb;
+            if (!squid_pair_reach(a.pos, b.pos, reach)) {
+                continue;
+            }
             const float dx = b.pos.x - a.pos.x;
             const float dz = b.pos.z - a.pos.z;
             const float dist = std::sqrt(dx * dx + dz * dz);
-            const float ra = squid_radius_checked(a);
-            const float rb = squid_radius_checked(b);
-            const float reach = ra + rb;
-            if (dist >= reach) {
-                continue;
-            }
             // Touching Alkoldun and bottle: the bottle is drunk, with no push and no bounce on either body.
             if (squid_is_drink(a, b)) {
                 const int bottle = a.kind == squid_kind::bottle ? i : j;
