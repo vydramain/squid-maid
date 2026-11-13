@@ -24,21 +24,7 @@
 namespace squid
 {
 
-// Events of one frame that may carry a sound: a calibrate-type press, the goal's bell, a marked drink, a fridge split, a
-// split, a glass hit and a bounce.
-enum class squid_frame_event : int {
-    calibrate = 0,
-    bell = 1,
-    cheers = 2,
-    can_glass = 3,
-    split = 4,
-    glass_hit = 5,
-    bounce = 6,
-    count,
-};
-// Count of the enum above; the flags are indexed by it.
-constexpr std::size_t SQUID_FRAME_EVENT_COUNT = static_cast<std::size_t>(squid_frame_event::count);
-using squid_frame_flags = std::array<bool, SQUID_FRAME_EVENT_COUNT>;
+using squid_frame_flags = std::array<bool, SQUID_SOUND_COUNT>;
 
 // Working state of the round and the frame. The disc writes dt in frame_update, before the systems run.
 struct squid_round {

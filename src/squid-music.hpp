@@ -18,6 +18,7 @@
 #include "pdk/rv_pdko.h"
 #include "pdkkit/component/rv_component_macro.hpp"
 #include "pdkkit/ecs/rv_ecs_frame.hpp"
+#include "pdkkit/sound/rv_pdkkit_sound.hpp"
 #include "pdklib/rv_logs/rv_logs.hpp"
 #include "squid-components.hpp"
 #include "squid-state.hpp"
@@ -141,33 +142,12 @@ inline const char *squid_music_take(squid_music &music)
     return row[music.bag[music.bag_pos++]];
 }
 
-// The drive's int64 result as rv_err: a negative code is the error, RV_OK is zero.
-inline int squid_music_result(int64_t code)
-{
-    return code < 0 ? static_cast<int>(code) : RV_OK;
-}
-
-inline int squid_music_play(rv_cd *cd, const char *section)
-{
-    return squid_music_result(rv_cd_stream_play(cd, section, &SQUID_MUSIC_CONF));
-}
-
-inline int squid_music_queue(rv_cd *cd, const char *section)
-{
-    return squid_music_result(rv_cd_stream_queue(cd, section, &SQUID_MUSIC_CONF));
-}
-
-inline int squid_music_switch(rv_cd *cd, const char *section)
-{
-    return squid_music_result(rv_cd_stream_switch(cd, section, &SQUID_MUSIC_CONF));
-}
-
 // The first play: the menu's bag from its top, whatever the first frame's mood. A refusal changes nothing; next frame retries.
 inline int squid_music_start(rv_cd *cd, squid_music &music, squid_mood mood)
 {
     squid_music next = music;
     squid_music_reshuffle(next, mood);
-    const int code = squid_music_play(cd, squid_music_take(next));
+    const int code = rv_pdkkit::sound_voice_result(rv_cd_stream_play(cd, squid_music_take(next), &SQUID_MUSIC_CONF));
     if (code != RV_OK) {
         return code;
     }
@@ -184,9 +164,10 @@ inline int squid_music_change(rv_cd *cd, squid_music &music, squid_mood mood)
     squid_music_reshuffle(next, mood);
     const char *section = squid_music_take(next);
     const bool menu = mood == squid_mood::menu;
-    int code = menu ? squid_music_switch(cd, section) : squid_music_queue(cd, section);
+    int code = rv_pdkkit::sound_voice_result(
+        menu ? rv_cd_stream_switch(cd, section, &SQUID_MUSIC_CONF) : rv_cd_stream_queue(cd, section, &SQUID_MUSIC_CONF));
     if (menu && code == RV_ERR_INVAL) {
-        code = squid_music_play(cd, section);
+        code = rv_pdkkit::sound_voice_result(rv_cd_stream_play(cd, section, &SQUID_MUSIC_CONF));
     }
     if (code != RV_OK) {
         return code;
@@ -199,7 +180,7 @@ inline int squid_music_change(rv_cd *cd, squid_music &music, squid_mood mood)
 inline int squid_music_advance(rv_cd *cd, squid_music &music)
 {
     rv_cd_stream_queue_info info = {};
-    const int status = squid_music_result(rv_cd_stream_queue_status(cd, &info));
+    const int status = rv_pdkkit::sound_voice_result(rv_cd_stream_queue_status(cd, &info));
     if (status != RV_OK) {
         return status;
     }
@@ -207,7 +188,7 @@ inline int squid_music_advance(rv_cd *cd, squid_music &music)
         return RV_OK;
     }
     squid_music next = music;
-    const int code = squid_music_queue(cd, squid_music_take(next));
+    const int code = rv_pdkkit::sound_voice_result(rv_cd_stream_queue(cd, squid_music_take(next), &SQUID_MUSIC_CONF));
     if (code != RV_OK) {
         return code;
     }

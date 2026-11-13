@@ -20,18 +20,20 @@
 namespace squid
 {
 
+// Events of one frame that may carry a sound, in priority order: a frame plays the first one that happened, the single
+// voice would cut the others anyway. Calibrate is a calibrate-type press, cheers a marked drink, can_glass a fridge split.
 enum class squid_sound_event : int {
-    calibrate = 0,
-    split = 1,
-    bounce = 2,
-    bell = 3,
-    cheers = 4,
-    can_glass = 5,
-    glass_hit = 6,
+    calibrate,
+    bell,
+    cheers,
+    can_glass,
+    split,
+    glass_hit,
+    bounce,
     count,
 };
 
-// One entry per event, in enum order.
+// One entry per event, in enum order; the frame's flags and the sound table are indexed by it.
 constexpr int SQUID_SOUND_COUNT = static_cast<int>(squid_sound_event::count);
 
 // Log tag of sound messages.
@@ -85,12 +87,12 @@ struct squid_sound_row {
 };
 constexpr std::array<squid_sound_row, SQUID_SOUND_COUNT> SQUID_SOUND_ROWS = { {
     { squid_sound_event::calibrate, SQUID_CALIBRATE_ASSETS, true },
-    { squid_sound_event::split, SQUID_SPLIT_ASSETS, true },
-    { squid_sound_event::bounce, SQUID_BOUNCE_ASSETS, false },
     { squid_sound_event::bell, SQUID_BELL_ASSETS, true },
     { squid_sound_event::cheers, SQUID_CHEERS_ASSETS, true },
     { squid_sound_event::can_glass, SQUID_CAN_GLASS_ASSETS, true },
+    { squid_sound_event::split, SQUID_SPLIT_ASSETS, true },
     { squid_sound_event::glass_hit, SQUID_GLASS_HIT_ASSETS, false },
+    { squid_sound_event::bounce, SQUID_BOUNCE_ASSETS, false },
 } };
 
 // Row i must be event i and hold at least one asset; a row out of place would play another event's sound.

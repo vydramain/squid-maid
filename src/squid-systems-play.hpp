@@ -103,7 +103,7 @@ inline int squid_input_press(squid_round &round, uint64_t pressed, const rv_ista
     // calibration, not on a start.
     const bool silent = row->command == squid_command::start || gyroless;
     if (code == RV_OK) {
-        round.happened[static_cast<std::size_t>(squid_frame_event::calibrate)] = !silent;
+        round.happened[static_cast<std::size_t>(squid_sound_event::calibrate)] = !silent;
     }
     return code;
 }

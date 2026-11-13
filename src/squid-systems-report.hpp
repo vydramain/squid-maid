@@ -28,71 +28,32 @@ constexpr const char *SQUID_LOG_TAG = "maid";
 // The state line is logged on frame 0 and then every this many frames.
 constexpr int64_t SQUID_STATE_PERIOD_FRAMES = 60;
 
-struct squid_sound_link {
-    squid_frame_event event;
-    squid_sound_event sound;
-};
-
-// One sound per frame, the first link whose event happened: the table order is the priority, the single voice would cut
-// the others anyway.
-constexpr auto SQUID_SOUND_LINKS = std::to_array<squid_sound_link>({
-    { squid_frame_event::calibrate, squid_sound_event::calibrate },
-    { squid_frame_event::bell, squid_sound_event::bell },
-    { squid_frame_event::cheers, squid_sound_event::cheers },
-    { squid_frame_event::can_glass, squid_sound_event::can_glass },
-    { squid_frame_event::split, squid_sound_event::split },
-    { squid_frame_event::glass_hit, squid_sound_event::glass_hit },
-    { squid_frame_event::bounce, squid_sound_event::bounce },
-});
-
-// The flags and the links must agree: every frame event has a link.
-constexpr bool squid_sound_links_cover_events()
-{
-    for (std::size_t event = 0; event < SQUID_FRAME_EVENT_COUNT; ++event) {
-        const auto covers = [event](const squid_sound_link &link) {
-            return static_cast<std::size_t>(link.event) == event;
-        };
-        if (std::none_of(SQUID_SOUND_LINKS.begin(), SQUID_SOUND_LINKS.end(), covers)) {
-            return false;
-        }
-    }
-    return true;
-}
-static_assert(squid_sound_links_cover_events(), "SQUID_SOUND_LINKS needs a link for every squid_frame_event");
-
-inline const squid_sound_link *squid_sound_link_of(const squid_frame_flags &happened)
-{
-    const auto it = std::find_if(SQUID_SOUND_LINKS.begin(), SQUID_SOUND_LINKS.end(), [&happened](const squid_sound_link &link) {
-        return happened[static_cast<std::size_t>(link.event)];
-    });
-    return it == SQUID_SOUND_LINKS.end() ? nullptr : &*it;
-}
-
 // Events of the frame that carry a sound: the bell from the goal's frame, the rest from the physics counts of a stepped
 // frame. A split is a count of splits, however many it holds, and a bounce a count of bounces. A step refused for its dt
 // keeps last frame's counts, so only a stepped frame can carry them. A fridge split with no bottle (at the 16-bottle cap)
-// is a plain split. An unmarked drink is a glass touch too. The frame plays the first link that happened.
+// is a plain split. An unmarked drink is a glass touch too. The frame plays the first event that happened.
 inline int squid_sound_changes(squid_round &round, squid_effects &effects, rv_pdko *pdk)
 {
     const squid_event_counts &events = round.game.events;
-    const auto mark = [&round](squid_frame_event event, bool on) {
+    const auto mark = [&round](squid_sound_event event, bool on) {
         round.happened[static_cast<std::size_t>(event)] = on;
     };
-    mark(squid_frame_event::bell, round.descended);
-    mark(squid_frame_event::cheers, round.stepped && events.marked_drunk > 0);
-    mark(squid_frame_event::can_glass, round.stepped && events.bottles_born > 0);
-    mark(squid_frame_event::split, round.stepped && events.splits > 0);
+    mark(squid_sound_event::bell, round.descended);
+    mark(squid_sound_event::cheers, round.stepped && events.marked_drunk > 0);
+    mark(squid_sound_event::can_glass, round.stepped && events.bottles_born > 0);
+    mark(squid_sound_event::split, round.stepped && events.splits > 0);
     const bool unmarked_drunk = events.bottles_drunk > events.marked_drunk;
-    mark(squid_frame_event::glass_hit, round.stepped && (events.bottle_bounces > 0 || unmarked_drunk));
-    mark(squid_frame_event::bounce, round.stepped && events.bounces > 0);
+    mark(squid_sound_event::glass_hit, round.stepped && (events.bottle_bounces > 0 || unmarked_drunk));
+    mark(squid_sound_event::bounce, round.stepped && events.bounces > 0);
 
     // A frame with no event plays nothing.
-    const squid_sound_link *link = squid_sound_link_of(round.happened);
-    if (link == nullptr) {
+    const auto first = std::find(round.happened.begin(), round.happened.end(), true);
+    if (first == round.happened.end()) {
         return RV_OK;
     }
     bool started = false;
-    const int code = squid_sound_play(pdk, effects.sound, link->sound, started);
+    const int code =
+        squid_sound_play(pdk, effects.sound, static_cast<squid_sound_event>(first - round.happened.begin()), started);
     if (started) {
         ++round.sounds_started;
     }
