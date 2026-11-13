@@ -21,6 +21,11 @@ format = "idx8"
 # drive streams; they are not loaded into sound memory.
 files = ["assets/snd/mus_*.wav"]
 
+[touch_pad]
+# On a phone the pad shows the D-pad and face buttons and gives the game the phone's motion; pause (View) is hidden
+# on purpose.
+show = ["dpad", "face", "gyro"]
+
 [budget.pcca]
 # 1 MiB, as Solid Maid and example-cpp declare: the 15 effect sounds take 356918 bytes of baked PCM;
 # the music streams from the drive and takes no sound memory.
