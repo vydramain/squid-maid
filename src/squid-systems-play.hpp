@@ -130,6 +130,7 @@ inline int squid_system_input(rv_pdkkit::ecs_world &world, const rv_pdkkit::ecs_
         return holder;
     }
     const uint64_t abilities = rv_cio_iport_abilities(rv_pdko_cio(frame.pdk), 0);
+    round->abilities = abilities;
     round->sensor = (abilities & RV_ISOURCE_GYRO_MOVE) != 0;
     round->phase_before = round->game.phase;
     round->happened = {};
@@ -149,18 +150,19 @@ inline int squid_system_round(rv_pdkkit::ecs_world &world, const rv_pdkkit::ecs_
     if (holder != RV_OK) {
         return holder;
     }
-    const uint64_t abilities = rv_cio_iport_abilities(rv_pdko_cio(frame.pdk), 0);
     const squid_phase phase_before_step = round->game.phase;
-    const int step_code = squid_game_step(round->game, frame.input.state, abilities, round->dt);
+    const int step_code = squid_game_step(round->game, frame.input.state, round->abilities, round->dt);
     // Only a frame that stepped the physics moves the bodies.
     const bool playing = phase_before_step == squid_phase::play && round->game.phase == squid_phase::play;
     round->stepped = step_code == RV_OK && playing;
     // The goal's frame: the drink that reaches SQUID_BEER_GOAL moves play into descent, and its bell plays.
     round->descended = phase_before_step == squid_phase::play && round->game.phase == squid_phase::descent;
     // A frame the input refused may carry a non-finite stick or quaternion: the panel keeps the last target then.
-    const squid_tilt target = squid_target_tilt(*round, frame.input.state);
-    const bool target_finite = std::isfinite(target.x_deg) && std::isfinite(target.z_deg);
-    round->target_tilt = target_finite ? target : round->target_tilt;
+    if (round->debug_panel) {
+        const squid_tilt target = squid_target_tilt(*round, frame.input.state);
+        const bool target_finite = std::isfinite(target.x_deg) && std::isfinite(target.z_deg);
+        round->target_tilt = target_finite ? target : round->target_tilt;
+    }
     squid_round_note(*round, step_code);
     return RV_OK;
 }

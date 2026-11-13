@@ -186,6 +186,39 @@ squid_hud_screen_lines(rv_pdklib::rv_font_style style, int max_px, const squid_h
     squid_hud_wrap(style, max_px, std::vformat(screen, std::make_format_args(beer, goal)), lines);
 }
 
+// The screen's lines and their widths, kept between frames: rebuilt only when the font scale, the width, the phase, the
+// beer counter or the language change. Equal to what squid_hud_screen_lines builds.
+struct squid_hud_cache {
+    squid_hud_lines lines;
+    std::vector<int> widths;
+
+    // Returns true when it rebuilt.
+    bool refresh(rv_pdklib::rv_font_style style, int max_px, const squid_hud_round &round)
+    {
+        if (valid_ && scale_ == style.scale && max_px_ == max_px && round_.phase == round.phase &&
+            round_.beer_drunk == round.beer_drunk && round_.lang == round.lang) {
+            return false;
+        }
+        lines.clear();
+        squid_hud_screen_lines(style, max_px, round, lines);
+        widths.clear();
+        for (const std::string &line : lines) {
+            widths.push_back(rv_pdklib::rv_font_measure_width(line, style.scale));
+        }
+        valid_ = true;
+        scale_ = style.scale;
+        max_px_ = max_px;
+        round_ = round;
+        return true;
+    }
+
+private:
+    bool valid_ = false;
+    int scale_ = 0;
+    int max_px_ = 0;
+    squid_hud_round round_{};
+};
+
 // The debug panel's lines, one string each: title, phase, target and actual tilt, source, ball counts by size, total mass,
 // the round's splits and absorbs, and the split-all key. Pure: the panel draws them, the harness reads them.
 inline auto squid_hud_debug_lines(const squid_hud_round &round, const squid_hud_debug &debug)
@@ -223,38 +256,10 @@ inline void squid_hud_debug_panel_lines(rv_pdklib::rv_font_style style,
     }
 }
 
-// Every line of the HUD in draw order: the screen, then the debug panel when show_debug is set. Laid out before anything
-// is drawn, so the backdrop can be sized to the text it sits behind.
-inline squid_hud_lines squid_hud_layout(rv_pdklib::rv_font_style style,
-    int max_px,
-    const squid_hud_round &round,
-    const squid_hud_debug &debug,
-    bool show_debug)
-{
-    squid_hud_lines lines;
-    squid_hud_screen_lines(style, max_px, round, lines);
-    if (show_debug) {
-        for (int i = 0; i < SQUID_HUD_PANEL_GAP_LINES && !lines.empty(); ++i) {
-            lines.emplace_back();
-        }
-        squid_hud_debug_panel_lines(style, max_px, round, debug, lines);
-    }
-    return lines;
-}
-
 // One flat sprite centred on the bottom edge: as wide as the widest line plus the margin on each side, from the margin
 // above the first line at top down to the bottom edge. Refused puts return their code.
-inline int squid_hud_backdrop_put(rv_cv *cv,
-    rv_pdklib::rv_font_style style,
-    const squid_hud_lines &lines,
-    int screen_w,
-    int screen_h,
-    int top)
+inline int squid_hud_backdrop_put(rv_cv *cv, int widest, int screen_w, int screen_h, int top)
 {
-    int widest = 0;
-    for (const std::string &line : lines) {
-        widest = std::max(widest, rv_pdklib::rv_font_measure_width(line, style.scale));
-    }
     const int width = widest + 2 * SQUID_HUD_MARGIN_PX;
     const int y = std::max(0, top - SQUID_HUD_MARGIN_PX);
     const int height = screen_h - y;
@@ -271,11 +276,13 @@ inline int squid_hud_backdrop_put(rv_cv *cv,
     return static_cast<int>(rv_cv_frame_put(cv, &primitive));
 }
 
-// Draws the HUD over the frame at the centre of the bottom edge: a backdrop behind the screen, and the debug panel under
-// it when show_debug is set. No lines, no backdrop. Every part is drawn even when one is refused; the first refusal is
-// returned. Without a screen size there is nothing to lay out to: that refusal is returned before anything is drawn.
+// Draws the HUD over the frame at the centre of the bottom edge from the cache of the screen: a backdrop behind the
+// screen, and the debug panel under it when show_debug is set. No lines, no backdrop. Every part is drawn even when one is
+// refused; the first refusal is returned. Without a screen size there is nothing to lay out to: that refusal is returned
+// before anything is drawn.
 inline int squid_hud_draw(rv_cv *cv,
     rv_pdklib::rv_font_style style,
+    squid_hud_cache &cache,
     const squid_hud_round &round,
     const squid_hud_debug &debug,
     bool show_debug)
@@ -289,7 +296,22 @@ inline int squid_hud_draw(rv_cv *cv,
         return static_cast<int>(height);
     }
     const int max_px = static_cast<int>(width) - 2 * SQUID_HUD_MARGIN_PX;
-    const squid_hud_lines lines = squid_hud_layout(style, max_px, round, debug, show_debug);
+    cache.refresh(style, max_px, round);
+    // The debug panel is laid out each frame while it is open; the screen comes from the cache.
+    squid_hud_lines panel;
+    std::vector<int> panel_widths;
+    if (show_debug) {
+        panel = cache.lines;
+        for (int i = 0; i < SQUID_HUD_PANEL_GAP_LINES && !panel.empty(); ++i) {
+            panel.emplace_back();
+        }
+        squid_hud_debug_panel_lines(style, max_px, round, debug, panel);
+        for (const std::string &line : panel) {
+            panel_widths.push_back(rv_pdklib::rv_font_measure_width(line, style.scale));
+        }
+    }
+    const squid_hud_lines &lines = show_debug ? panel : cache.lines;
+    const std::vector<int> &widths = show_debug ? panel_widths : cache.widths;
     if (lines.empty()) {
         return RV_OK;
     }
@@ -297,10 +319,11 @@ inline int squid_hud_draw(rv_cv *cv,
     // Same depth key: primitives of one bucket draw in submission order, so the backdrop goes first and the text lands on it.
     const int step = squid_hud_line_step(style);
     int y = static_cast<int>(height) - SQUID_HUD_MARGIN_PX - static_cast<int>(lines.size()) * step + SQUID_HUD_LINE_GAP_PX;
-    int first_code = squid_hud_backdrop_put(cv, style, lines, static_cast<int>(width), static_cast<int>(height), y);
-    for (const std::string &line : lines) {
-        const int x = (static_cast<int>(width) - rv_pdklib::rv_font_measure_width(line, style.scale)) / 2;
-        first_code = squid_hud_first(first_code, squid_hud_put(cv, style, x, y, line));
+    const int widest = *std::max_element(widths.begin(), widths.end());
+    int first_code = squid_hud_backdrop_put(cv, widest, static_cast<int>(width), static_cast<int>(height), y);
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        const int x = (static_cast<int>(width) - widths[i]) / 2;
+        first_code = squid_hud_first(first_code, squid_hud_put(cv, style, x, y, lines[i]));
         y += step;
     }
     if (first_code != RV_OK) {

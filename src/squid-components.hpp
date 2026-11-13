@@ -44,6 +44,8 @@ using squid_frame_flags = std::array<bool, SQUID_FRAME_EVENT_COUNT>;
 struct squid_round {
     squid_game game{};
     float dt = 0;
+    // Abilities of port 0, read once per frame by the input system.
+    uint64_t abilities = 0;
     // Port 0 has a gyroscope.
     bool sensor = false;
     // L4 toggles it; closed at start.

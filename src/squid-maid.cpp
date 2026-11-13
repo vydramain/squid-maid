@@ -188,7 +188,9 @@ private:
         squid_round *round = nullptr;
         if (font_ready_ && squid_single(world_, round) == RV_OK) {
             rv_cv *cv = rv_pdko_cv(pdk_);
-            draw_step("hud", squid_hud_draw(cv, font_style(), hud_round(*round), hud_debug(*round), round->debug_panel));
+            // The panel's numbers are gathered only while it is open.
+            const squid_hud_debug debug = round->debug_panel ? hud_debug(*round) : squid_hud_debug{};
+            draw_step("hud", squid_hud_draw(cv, font_style(), hud_cache_, hud_round(*round), debug, round->debug_panel));
         }
     }
 
@@ -224,6 +226,7 @@ private:
     int64_t addr_palette_ = 0;
     bool font_ready_ = false;
     bool draw_error_logged_ = false;
+    squid_hud_cache hud_cache_;
 };
 
 } // namespace squid
