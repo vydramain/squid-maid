@@ -74,13 +74,34 @@ inline squid_flat squid_gravity(squid_tilt tilt)
     return squid_flat{ -SQUID_GRAVITY * std::sin(tz) * std::cos(tx), SQUID_GRAVITY * std::sin(tx) };
 }
 
+// cos/sin of the constant turn of squid_gravity_disc, computed once.
+inline const float SQUID_POSE_YAW_COS = std::cos(-SQUID_POSE_YAW_DEG * SQUID_DEG_TO_RAD);
+inline const float SQUID_POSE_YAW_SIN = std::sin(-SQUID_POSE_YAW_DEG * SQUID_DEG_TO_RAD);
+
 // squid_gravity in the disc's axes: pose_yaw turns the bodies about the plate normal under the tilt root, so the disc's
 // x and z are the root's turned by -SQUID_POSE_YAW_DEG (the inverse of that yaw). Without it the balls roll off the slope.
 inline squid_flat squid_gravity_disc(squid_tilt tilt)
 {
     const squid_flat g = squid_gravity(tilt);
-    const float a = -SQUID_POSE_YAW_DEG * SQUID_DEG_TO_RAD;
-    return squid_flat{ std::cos(a) * g.x + std::sin(a) * g.z, -std::sin(a) * g.x + std::cos(a) * g.z };
+    return squid_flat{ SQUID_POSE_YAW_COS * g.x + SQUID_POSE_YAW_SIN * g.z,
+        -SQUID_POSE_YAW_SIN * g.x + SQUID_POSE_YAW_COS * g.z };
+}
+
+// Decays of one substep of h seconds, the same for every body: taken once per substep, not per body.
+struct squid_step_consts {
+    float drift_decay = 0;
+    float drift_kick_unit = 0;
+    float damping = 0;
+    float spin_decay = 0;
+};
+
+inline squid_step_consts squid_step_consts_for(float h)
+{
+    const float decay = std::exp(-h / SQUID_DRIFT_TAU_S);
+    return squid_step_consts{ decay,
+        std::sqrt(1.0f - decay * decay),
+        std::exp(-SQUID_DAMPING_PER_S * h),
+        std::exp(-h / SQUID_SPIN_DECAY_S) };
 }
 
 // Radius of a body whose size squid_substep checked in the same substep; call it only after that check. Masses stay in
@@ -129,13 +150,12 @@ inline float squid_normal(std::minstd_rand &rng)
 // Exact Ornstein-Uhlenbeck step of the drift over h seconds: it relaxes to zero with time constant SQUID_DRIFT_TAU_S and
 // keeps the stationary deviation SQUID_DRIFT_SIGMA / sqrt(mass), so heavier bodies drift less. One normal sample per
 // axis, x then z; each sample takes two generator draws.
-inline void squid_drift_step(squid_body &b, float h, std::minstd_rand &rng)
+inline void squid_drift_step(squid_body &b, const squid_step_consts &k, std::minstd_rand &rng)
 {
-    const float decay = std::exp(-h / SQUID_DRIFT_TAU_S);
     const float sigma = SQUID_DRIFT_SIGMA / std::sqrt(static_cast<float>(b.mass));
-    const float kick = sigma * std::sqrt(1.0f - decay * decay);
-    b.drift.x = b.drift.x * decay + kick * squid_normal(rng);
-    b.drift.z = b.drift.z * decay + kick * squid_normal(rng);
+    const float kick = sigma * k.drift_kick_unit;
+    b.drift.x = b.drift.x * k.drift_decay + kick * squid_normal(rng);
+    b.drift.z = b.drift.z * k.drift_decay + kick * squid_normal(rng);
 }
 
 // Acceleration (tilt plus the body's drift), damping and speed cap, then the move by h seconds. The cap bounds this move
@@ -445,7 +465,7 @@ inline void squid_pair_step(squid_bodies &set, squid_event_counts &counts)
 
 // Display spin and hover over h seconds: rot turns by spin * h (exact axis-angle step, renormalised), the spin decays
 // with SQUID_SPIN_DECAY_S, and the hover phase advances by 2 pi h / period. Motion never reads these.
-inline void squid_motion_step(squid_body &b, float h)
+inline void squid_motion_step(squid_body &b, float h, const squid_step_consts &k)
 {
     const float rate = std::sqrt(b.spin.x * b.spin.x + b.spin.y * b.spin.y + b.spin.z * b.spin.z);
     const float angle = rate * h;
@@ -455,10 +475,9 @@ inline void squid_motion_step(squid_body &b, float h)
     const rv_pdklib::rv_vec4 turned = squid_quat_mul(turn, b.rot);
     const float norm = std::sqrt(turned.x * turned.x + turned.y * turned.y + turned.z * turned.z + turned.w * turned.w);
     b.rot = rv_pdklib::rv_vec4{ turned.x / norm, turned.y / norm, turned.z / norm, turned.w / norm };
-    const float decay = std::exp(-h / SQUID_SPIN_DECAY_S);
-    b.spin.x *= decay;
-    b.spin.y *= decay;
-    b.spin.z *= decay;
+    b.spin.x *= k.spin_decay;
+    b.spin.y *= k.spin_decay;
+    b.spin.z *= k.spin_decay;
     const float full_turn = 2.0f * std::numbers::pi_v<float>;
     b.hover_phase = std::fmod(b.hover_phase + full_turn * h / b.hover_period, full_turn);
 }
@@ -480,15 +499,15 @@ inline int squid_substep(squid_bodies &set, squid_flat accel, float h, squid_eve
             return RV_ERR_INVAL;
         }
     }
-    const float damping = std::exp(-SQUID_DAMPING_PER_S * h);
+    const squid_step_consts k = squid_step_consts_for(h);
     for (int i = 0; i < set.count; ++i) {
-        squid_drift_step(set.items[i], h, rng);
-        squid_body_move(set.items[i], accel, h, damping);
+        squid_drift_step(set.items[i], k, rng);
+        squid_body_move(set.items[i], accel, h, k.damping);
     }
     squid_pair_step(set, counts);
     for (int i = 0; i < set.count; ++i) {
         squid_edge_step(set.items[i]);
-        squid_motion_step(set.items[i], h);
+        squid_motion_step(set.items[i], h, k);
     }
     return RV_OK;
 }
