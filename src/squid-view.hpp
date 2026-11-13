@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
 
 #include "squid-body.hpp"
@@ -101,8 +102,9 @@ inline const squid_view_flight_row *squid_view_flight_row_of(squid_phase phase)
     return it == SQUID_VIEW_FLIGHT_ROWS.end() ? nullptr : &*it;
 }
 
-// Model file of a body by its kind, or by its size and variant for a ball. A refused body leaves model untouched.
-inline int squid_view_model(const squid_body &body, const char *&model)
+// Model file of a body by its kind, or by its size and variant for a ball. A refused body leaves model untouched. A
+// non-null radius also gets the body's radius, taken from the size this already looks up.
+inline int squid_view_model(const squid_body &body, const char *&model, float *radius = nullptr)
 {
     const std::size_t kind = static_cast<std::size_t>(body.kind);
     if (kind >= std::size(SQUID_VIEW_KIND_MODELS)) {
@@ -110,10 +112,16 @@ inline int squid_view_model(const squid_body &body, const char *&model)
         return RV_ERR_INVAL;
     }
     if (SQUID_VIEW_KIND_MODELS[kind] != nullptr) {
+        if (radius != nullptr && squid_body_radius(body, *radius) != RV_OK) {
+            return RV_ERR_INVAL;
+        }
         model = SQUID_VIEW_KIND_MODELS[kind];
         return RV_OK;
     }
     if (body.kind == squid_kind::bottle) {
+        if (radius != nullptr) {
+            *radius = SQUID_BOTTLE_RADIUS;
+        }
         model = SQUID_VIEW_BOTTLE_MODELS[static_cast<std::size_t>(body.marked)];
         return RV_OK;
     }
@@ -129,20 +137,35 @@ inline int squid_view_model(const squid_body &body, const char *&model)
         RV_LOG_ERR(SQUID_VIEW_TAG, "body model refused: variant {} is outside 0..{}", body.variant, SQUID_MODEL_VARIANTS - 1);
         return RV_ERR_INVAL;
     }
+    if (radius != nullptr) {
+        *radius = SQUID_BALL_RADIUS[size - 1];
+    }
     model = SQUID_VIEW_MODELS[size - 1][body.variant % SQUID_VIEW_SIZE_VARIANTS[size - 1]];
     return RV_OK;
 }
 
+// The body's model file, or nullptr for a refused body (its cause is logged by squid_view_model).
+inline const char *squid_view_model_name(const squid_body &body)
+{
+    const char *model = nullptr;
+    return squid_view_model(body, model) == RV_OK ? model : nullptr;
+}
+
+// True when the entity needs its model written: nothing set yet (last null) or a different name. The names are
+// compared by text, not by address.
+inline bool squid_view_model_changed(const char *last, const char *next)
+{
+    return last == nullptr || std::strcmp(last, next) != 0;
+}
+
 // Writes the body's model, position (its dome centre, lifted by its hover) and rotation to its entity. A refusal keeps
-// the entity's previous pose and model; its cause is logged where it is found.
-inline int squid_view_body_set(rv_pdkkit::ecs_world &world, rv_pdkkit::ecs_id id, const squid_body &body)
+// the entity's previous pose and model; its cause is logged where it is found. last is the model the entity holds:
+// the model is written only when it differs, and last follows it.
+inline int squid_view_body_set(rv_pdkkit::ecs_world &world, rv_pdkkit::ecs_id id, const squid_body &body, const char *&last)
 {
     float radius = 0.0f;
-    if (squid_body_radius(body, radius) != RV_OK) {
-        return RV_ERR_INVAL;
-    }
     const char *model = nullptr;
-    if (squid_view_model(body, model) != RV_OK) {
+    if (squid_view_model(body, model, &radius) != RV_OK) {
         return RV_ERR_INVAL;
     }
     const float lift = squid_dome_hover_lift(body.hover_phase);
@@ -157,13 +180,21 @@ inline int squid_view_body_set(rv_pdkkit::ecs_world &world, rv_pdkkit::ecs_id id
     if (point_code != RV_OK) {
         return point_code;
     }
-    return squid_scene_body_set(world, id, model, position, rotation);
+    const bool changed = squid_view_model_changed(last, model);
+    const int set_code = squid_scene_body_set(world, id, model, position, rotation, changed);
+    if (set_code == RV_OK) {
+        last = model;
+    }
+    return set_code;
 }
 
 // A pool entity and the load that made it; the load is what unloads it.
+// model is the model name the entity holds, so the view writes it only on a change; a fresh entity holds the model
+// it is loaded with.
 struct squid_view_slot {
     rv_pdkkit::ecs_id id{};
     uint32_t load = 0;
+    const char *model = SQUID_VIEW_ALKOLDUN_MODEL;
 };
 
 // One entity per body slot: slot i shows body i. spawned counts the slots loaded, from the front.
@@ -197,13 +228,18 @@ inline int squid_view_spawn(rv_pdkkit::ecs_world &world, rv_cd *cd, const squid_
             squid_view_pool_unload(world, pool);
             return code;
         }
+        slot.model = SQUID_VIEW_ALKOLDUN_MODEL;
         pool.spawned = i + 1;
     }
     return RV_OK;
 }
 
 // Writes Alkoldun's pose on the flight: the arc point at the descent's progress, upright so his feet point at the plate.
-inline int squid_view_flight_set(rv_pdkkit::ecs_world &world, rv_pdkkit::ecs_id id, const char *model, const squid_descent &d)
+inline int squid_view_flight_set(rv_pdkkit::ecs_world &world,
+    rv_pdkkit::ecs_id id,
+    const char *model,
+    const squid_descent &d,
+    const char *&last)
 {
     const rv_pdklib::rv_vec3 point = squid_descent_point(d, squid_descent_end());
     rv_pdklib::fx_vec3 position{};
@@ -212,7 +248,12 @@ inline int squid_view_flight_set(rv_pdkkit::ecs_world &world, rv_pdkkit::ecs_id 
         return point_code;
     }
     // A zero Euler angle is the identity: no tilt, no spin.
-    return squid_scene_body_set(world, id, model, position, rv_pdklib::fx_vec3{});
+    const bool changed = squid_view_model_changed(last, model);
+    const int set_code = squid_scene_body_set(world, id, model, position, rv_pdklib::fx_vec3{}, changed);
+    if (set_code == RV_OK) {
+        last = model;
+    }
+    return set_code;
 }
 
 // Alkoldun in a flight phase is drawn on the arc; every other body keeps its physics pose.
@@ -220,19 +261,20 @@ inline int squid_view_pose(rv_pdkkit::ecs_world &world,
     rv_pdkkit::ecs_id id,
     const squid_body &body,
     squid_phase phase,
-    const squid_descent &d)
+    const squid_descent &d,
+    const char *&last)
 {
     const squid_view_flight_row *flight = squid_view_flight_row_of(phase);
     if (flight == nullptr || body.kind != squid_kind::alkoldun) {
-        return squid_view_body_set(world, id, body);
+        return squid_view_body_set(world, id, body, last);
     }
-    return squid_view_flight_set(world, id, flight->model, d);
+    return squid_view_flight_set(world, id, flight->model, d, last);
 }
 
 // Shows slot i as body i with its pose at the stage's scale and hides the slots past the count; a zero scale hides
 // them all. Every slot is visited; the first refusal is returned. The phase and descent place Alkoldun on his flight.
 inline int squid_view_update(rv_pdkkit::ecs_world &world,
-    const squid_view_pool &pool,
+    squid_view_pool &pool,
     const squid_bodies &bodies,
     squid_phase phase,
     const squid_descent &d,
@@ -246,10 +288,10 @@ inline int squid_view_update(rv_pdkkit::ecs_world &world,
     }
     int first = RV_OK;
     for (int i = 0; i < SQUID_BODY_CAPACITY; ++i) {
-        const squid_view_slot &slot = pool.slots[i];
+        squid_view_slot &slot = pool.slots[i];
         const bool shown = i < bodies.count && fx_scale > 0;
         const int hidden_code = squid_scene_body_hidden(world, slot.id, !shown);
-        const int pose_code = shown ? squid_view_pose(world, slot.id, bodies.items[i], phase, d) : RV_OK;
+        const int pose_code = shown ? squid_view_pose(world, slot.id, bodies.items[i], phase, d, slot.model) : RV_OK;
         const int grow_code = shown ? squid_scene_body_scale(world, slot.id, fx_scale) : RV_OK;
         const int code = hidden_code != RV_OK ? hidden_code : pose_code != RV_OK ? pose_code : grow_code;
         if (code != RV_OK && first == RV_OK) {

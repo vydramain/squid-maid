@@ -366,21 +366,25 @@ inline int squid_scene_body_spawn(rv_pdkkit::ecs_world &world,
     return RV_OK;
 }
 
-// Places a body under pose_yaw: model name, position in pose_yaw's space (Q20.12) and Euler rotation.
+// Places a body under pose_yaw: model name (written only when set_model), position in pose_yaw's space (Q20.12) and
+// Euler rotation.
 inline int squid_scene_body_set(rv_pdkkit::ecs_world &world,
     rv_pdkkit::ecs_id id,
     const char *model,
     rv_pdklib::fx_vec3 position,
-    rv_pdklib::fx_vec3 rotation)
+    rv_pdklib::fx_vec3 rotation,
+    bool set_model = true)
 {
     rv_pdkkit::ecs_component_transform *transform = rv_pdkkit::ecs_component_get<rv_pdkkit::ecs_component_transform>(world, id);
     if (transform == nullptr) {
         RV_LOG_ERR(SQUID_SCENE_TAG, "body has no transform; pose not set");
         return RV_ERR_NOENT;
     }
-    const int model_code = squid_scene_body_model(world, id, model);
-    if (model_code != RV_OK) {
-        return model_code;
+    if (set_model) {
+        const int model_code = squid_scene_body_model(world, id, model);
+        if (model_code != RV_OK) {
+            return model_code;
+        }
     }
     transform->position = position;
     transform->rotation = rotation;
