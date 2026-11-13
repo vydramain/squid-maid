@@ -307,40 +307,31 @@ inline int squid_bottle_birth(squid_bodies &set, int from, squid_flat centre, sq
     return RV_OK;
 }
 
-// Split of the body at index i for event e. A fridge (size 4) split also gives a bottle at its centre, where the halves
-// part, marked when Alkoldun's hit split the heaviest ball of the pass (heaviest, taken at the pass start).
-inline void squid_event_split(squid_bodies &set, int i, const squid_pair_event &e, int heaviest, squid_event_counts &counts)
-{
-    const bool fridge = set.items[i].mass == SQUID_BALL_MASS_MAX;
-    const bool marked = e.alkoldun_hit && set.items[i].mass == heaviest;
-    // The split moves the parent to the lo half, so the centre and velocity are taken before it.
-    const squid_flat centre = set.items[i].pos;
-    const squid_flat vel = set.items[i].vel;
-    if (squid_split_body(set, i, e.normal) != RV_OK) {
-        return;
-    }
-    ++counts.splits;
-    if (fridge && squid_bottle_birth(set, i, centre, vel, marked) == RV_OK) {
-        ++counts.bottles_born;
-    }
-}
-
-// Split-all split of the body at index i along normal. A fridge (size 4) also gives an unmarked bottle at the centre of
-// the split, where the halves meet, with the parent's velocity; a refused bottle leaves the split standing.
-inline int squid_split_all_split(squid_bodies &set, int i, squid_flat normal)
+// Split of the body at index i along normal. A fridge (size 4) also gives a bottle at the centre of the split, where
+// the halves part, with the parent's velocity, marked or not; a refused bottle leaves the split standing.
+inline int squid_split_all_split(squid_bodies &set, int i, squid_flat normal, bool marked = false)
 {
     const bool fridge = set.items[i].mass == SQUID_BALL_MASS_MAX;
     // The split moves the parent to the lo half, so the centre and velocity are taken before it.
     const squid_flat centre = set.items[i].pos;
     const squid_flat vel = set.items[i].vel;
     const int rc = squid_split_body(set, i, normal);
-    if (rc != RV_OK) {
-        return rc;
+    if (rc == RV_OK && fridge) {
+        squid_bottle_birth(set, i, centre, vel, marked);
     }
-    if (fridge) {
-        squid_bottle_birth(set, i, centre, vel, false);
+    return rc;
+}
+
+// Split of the body at index i for event e; the bottle is marked when Alkoldun's hit split the heaviest ball of the
+// pass (heaviest, taken at the pass start).
+inline void squid_event_split(squid_bodies &set, int i, const squid_pair_event &e, int heaviest, squid_event_counts &counts)
+{
+    const bool marked = e.alkoldun_hit && set.items[i].mass == heaviest;
+    const int before = set.count;
+    if (squid_split_all_split(set, i, e.normal, marked) == RV_OK) {
+        ++counts.splits;
+        counts.bottles_born += set.count - before - 1; // a split adds one body, a bottle one more
     }
-    return RV_OK;
 }
 
 // Ball-ball contact over all pairs (O(n^2), n <= SQUID_BODY_CAPACITY). A touching pair is separated along the normal
